@@ -7,6 +7,7 @@ from shuoha.schemas import (
     EvidenceItem,
     EvidenceSignal,
     Verdict,
+    VerdictBias,
 )
 
 
@@ -17,6 +18,7 @@ def test_render_markdown_contains_quick_conclusion():
         company_name="贵州茅台",
         as_of_date="2026-04-06",
         verdict=Verdict.WAIT,
+        bias=VerdictBias.BULLISH,
         confidence=Confidence.MEDIUM,
         technical_evidence=[
             EvidenceItem(name="ma_cross", signal=EvidenceSignal.NEUTRAL, raw_value="mixed", plain_text="趋势一般。")
@@ -29,7 +31,7 @@ def test_render_markdown_contains_quick_conclusion():
     )
     markdown = render_markdown(result)
     assert "## 快速结论" in markdown
-    assert "结论：`观望`" in markdown
+    assert "结论：`观望-偏多`" in markdown
     assert "状态：`正常`" in markdown
     assert "## 这次判断的主要依据" in markdown
     assert "## 这只股票更适合什么人" in markdown
@@ -46,6 +48,7 @@ def test_render_markdown_adds_sharp_review_action_and_beginner_mistakes():
         company_name="贵州茅台",
         as_of_date="2026-04-06",
         verdict=Verdict.WAIT,
+        bias=VerdictBias.NEUTRAL,
         confidence=Confidence.MEDIUM,
         technical_evidence=[
             EvidenceItem(
@@ -98,6 +101,7 @@ def test_render_markdown_watch_points_include_threshold_style_conditions():
         company_name="贵州茅台",
         as_of_date="2026-04-06",
         verdict=Verdict.WAIT,
+        bias=VerdictBias.NEUTRAL,
         confidence=Confidence.MEDIUM,
         technical_evidence=[
             EvidenceItem(
@@ -148,6 +152,7 @@ def test_render_markdown_adds_evidence_scorecard():
         company_name="贵州茅台",
         as_of_date="2026-04-06",
         verdict=Verdict.WAIT,
+        bias=VerdictBias.NEUTRAL,
         confidence=Confidence.MEDIUM,
         technical_evidence=[
             EvidenceItem(

@@ -9,6 +9,12 @@ class Verdict(str, Enum):
     AVOID_FOR_NOW = "avoid_for_now"
 
 
+class VerdictBias(str, Enum):
+    BULLISH = "bullish"
+    NEUTRAL = "neutral"
+    BEARISH = "bearish"
+
+
 class Confidence(str, Enum):
     HIGH = "high"
     MEDIUM = "medium"
@@ -45,6 +51,7 @@ class AnalysisResult(BaseModel):
     company_name: str
     as_of_date: str
     verdict: Verdict | None = None
+    bias: VerdictBias = VerdictBias.NEUTRAL
     confidence: Confidence
     technical_evidence: list[EvidenceItem] = Field(default_factory=list)
     risk_evidence: list[EvidenceItem] = Field(default_factory=list)

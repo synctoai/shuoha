@@ -1,6 +1,6 @@
 from shuoha.data.providers.base import ProviderPayload
 from shuoha.engine import run_analysis, summarize_signals
-from shuoha.schemas import AnalysisResult, Verdict
+from shuoha.schemas import AnalysisResult, Verdict, VerdictBias
 
 
 def test_analysis_result_allows_partial_without_verdict():
@@ -10,6 +10,7 @@ def test_analysis_result_allows_partial_without_verdict():
         company_name="贵州茅台",
         as_of_date="2026-04-06",
         verdict=None,
+        bias="neutral",
         confidence="low",
         technical_evidence=[],
         risk_evidence=[],
@@ -27,6 +28,12 @@ def test_verdict_enum_machine_values():
     assert Verdict.AVOID_FOR_NOW.value == "avoid_for_now"
 
 
+def test_verdict_bias_enum_machine_values():
+    assert VerdictBias.BULLISH.value == "bullish"
+    assert VerdictBias.NEUTRAL.value == "neutral"
+    assert VerdictBias.BEARISH.value == "bearish"
+
+
 def test_summarize_signals_yields_wait_for_mixed_signals():
     rows = [
         {"date": "2026-01-01", "close": 100.0, "volume": 1000.0},
@@ -37,6 +44,7 @@ def test_summarize_signals_yields_wait_for_mixed_signals():
     ] * 20
     result = summarize_signals("600519", "贵州茅台", rows)
     assert result.verdict.value == "wait"
+    assert result.bias.value in {"neutral", "bearish", "bullish"}
 
 
 def test_summarize_signals_includes_macd_rsi_and_volume_evidence():
@@ -71,5 +79,6 @@ def test_run_analysis_returns_partial_when_provider_fails(monkeypatch):
     result, markdown = run_analysis("600519")
     assert result.status.value == "partial"
     assert result.verdict is None
+    assert result.bias.value == "neutral"
     assert "network down" in result.data_warnings[0]
     assert "当前无法给出结论" in markdown

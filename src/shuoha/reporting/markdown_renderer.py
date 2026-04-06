@@ -35,6 +35,22 @@ def _parse_metric_map(raw_value) -> dict[str, float]:
     return metrics
 
 
+def _verdict_label(result: AnalysisResult) -> str:
+    if result.verdict is None:
+        return "当前无法给出结论"
+    if result.verdict.value == "consider":
+        return "可以关注-偏强" if result.bias.value == "bullish" else "可以关注"
+    if result.verdict.value == "wait":
+        if result.bias.value == "bullish":
+            return "观望-偏多"
+        if result.bias.value == "bearish":
+            return "观望-偏空"
+        return "观望"
+    if result.verdict.value == "avoid_for_now":
+        return "暂时回避-偏空" if result.bias.value == "bearish" else "暂时回避"
+    return VERDICT_LABELS.get(result.verdict.value, "当前无法给出结论")
+
+
 def _join_or_default(lines: list[str], default: str) -> str:
     return "\n".join(lines) if lines else default
 
@@ -231,7 +247,7 @@ def _indicator_glossary() -> str:
 
 
 def render_markdown(result: AnalysisResult) -> str:
-    label = VERDICT_LABELS.get(result.verdict.value, "当前无法给出结论") if result.verdict else "当前无法给出结论"
+    label = _verdict_label(result)
     confidence = CONFIDENCE_LABELS.get(result.confidence.value, result.confidence.value)
     status = STATUS_LABELS.get(result.status.value, result.status.value)
     positives = _join_or_default(

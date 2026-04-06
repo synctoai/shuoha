@@ -20,6 +20,7 @@ from shuoha.schemas import (
     EvidenceItem,
     EvidenceSignal,
     Verdict,
+    VerdictBias,
 )
 
 
@@ -126,7 +127,7 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
     ]
     positives = sum(item.signal == EvidenceSignal.POSITIVE for item in technical_evidence + risk_evidence)
     negatives = sum(item.signal == EvidenceSignal.NEGATIVE for item in technical_evidence + risk_evidence)
-    verdict_value, confidence_value = choose_verdict(
+    verdict_value, confidence_value, bias_value = choose_verdict(
         positives=positives,
         negatives=negatives,
         veto=drawdown > 0.35 and volatility > 0.45,
@@ -138,6 +139,7 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
         company_name=company_name,
         as_of_date=rows[-1]["date"],
         verdict=Verdict(verdict_value),
+        bias=VerdictBias(bias_value),
         confidence=Confidence(confidence_value),
         technical_evidence=technical_evidence,
         risk_evidence=risk_evidence,
@@ -159,6 +161,7 @@ def run_analysis(stock_code: str, *, agent: bool = False):
             company_name=stock_code,
             as_of_date="未知",
             verdict=None,
+            bias=VerdictBias.NEUTRAL,
             confidence=Confidence.LOW,
             technical_evidence=[],
             risk_evidence=[],
