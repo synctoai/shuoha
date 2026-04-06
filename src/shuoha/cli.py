@@ -17,12 +17,24 @@ def main() -> None:
 
 
 @app.command()
-def analyze(stock_code: str, output_dir: Path | None = None, agent: bool = False) -> None:
+def analyze(
+    stock_code: str,
+    output_dir: Path | None = None,
+    agent: bool = False,
+    full: bool = typer.Option(
+        False,
+        "--full/--brief",
+        help="控制终端输出模式：完整报告或电梯摘要。",
+    ),
+) -> None:
     if not (stock_code.isdigit() and len(stock_code) == 6):
         typer.echo("股票代码必须是 6 位数字")
         raise typer.Exit(2)
     result, markdown = run_analysis(stock_code, agent=agent)
-    print(render_elevator_summary(result))
+    if full:
+        print(markdown)
+    else:
+        print(render_elevator_summary(result))
     evidence_path, report_path = write_outputs(result, markdown, output_dir or default_output_dir(stock_code))
     print(f"[green]已生成[/green] {report_path}")
     print(f"[green]已生成[/green] {evidence_path}")

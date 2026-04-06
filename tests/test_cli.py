@@ -23,6 +23,8 @@ def test_help_mentions_agent_flag():
     result = runner.invoke(app, ["analyze", "--help"])
     assert result.exit_code == 0
     assert "--agent" in result.stdout
+    assert "--full" in result.stdout
+    assert "--brief" in result.stdout
 
 
 def test_analyze_prints_elevator_summary_before_output_paths(monkeypatch, tmp_path):
@@ -54,4 +56,39 @@ def test_analyze_prints_elevator_summary_before_output_paths(monkeypatch, tmp_pa
     assert result.exit_code == 0
     assert "电梯摘要" in result.stdout
     assert "结论：观望-偏多" in result.stdout
+    assert "已生成" in result.stdout
+
+
+def test_analyze_full_prints_markdown_report_to_terminal(monkeypatch, tmp_path):
+    result_model = AnalysisResult(
+        status=AnalysisStatus.OK,
+        stock_code="600519",
+        company_name="贵州茅台",
+        as_of_date="2026-04-06",
+        verdict=Verdict.WAIT,
+        bias=VerdictBias.BULLISH,
+        confidence=Confidence.MEDIUM,
+        technical_evidence=[],
+        risk_evidence=[],
+        unknowns=[],
+        data_warnings=[],
+        basic_context=BasicContext(industry="白酒", company_summary="主营高端白酒。"),
+        disclaimer="本报告仅供学习交流，不构成投资建议。",
+    )
+
+    monkeypatch.setattr(
+        "shuoha.cli.run_analysis",
+        lambda stock_code, agent=False: (result_model, "# 贵州茅台\n\n## 快速结论\n结论：`观望-偏多`"),
+    )
+    monkeypatch.setattr(
+        "shuoha.cli.write_outputs",
+        lambda result, report_markdown, output_dir: (tmp_path / "evidence.json", tmp_path / "report.md"),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["analyze", "600519", "--full"])
+
+    assert result.exit_code == 0
+    assert "# 贵州茅台" in result.stdout
+    assert "## 快速结论" in result.stdout
     assert "已生成" in result.stdout
