@@ -25,8 +25,9 @@ def test_render_markdown_contains_quick_conclusion():
         unknowns=[],
         data_warnings=[],
         basic_context=BasicContext(industry="白酒", company_summary="主营高端白酒。"),
-        disclaimer="Educational only.",
+        disclaimer="本报告仅供学习交流，不构成投资建议。",
     )
     markdown = render_markdown(result)
-    assert "## Quick Conclusion" in markdown
-    assert "Verdict: `Wait`" in markdown
+    assert "## 快速结论" in markdown
+    assert "结论：`观望`" in markdown
+    assert "状态：`正常`" in markdown

@@ -45,3 +45,4 @@ def test_provider_falls_back_to_tx_when_eastmoney_fails(monkeypatch):
     payload = AKShareProvider().fetch("600519")
     assert payload.stock_code == "600519"
     assert payload.daily_history[-1]["close"] == 10.0
+    assert payload.company_summary == "A 股上市公司 600519。"

@@ -7,14 +7,14 @@ def test_help_smoke():
     runner = CliRunner()
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "Analyze one A-share stock code" in result.stdout
+    assert "分析一只 A 股股票" in result.stdout
 
 
 def test_cli_requires_stock_code_format():
     runner = CliRunner()
     result = runner.invoke(app, ["analyze", "abc"])
     assert result.exit_code == 2
-    assert "Stock code must be 6 digits" in result.stdout
+    assert "股票代码必须是 6 位数字" in result.stdout
 
 
 def test_help_mentions_agent_flag():

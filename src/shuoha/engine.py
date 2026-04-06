@@ -64,8 +64,8 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
         risk_evidence=risk_evidence,
         unknowns=[],
         data_warnings=[],
-        basic_context=BasicContext(industry=None, company_summary=f"{company_name} company summary pending provider enrichment."),
-        disclaimer="This report is educational only and is not investment advice.",
+        basic_context=BasicContext(industry=None, company_summary=f"{company_name} 的公司简介暂未补全。"),
+        disclaimer="本报告仅供学习交流，不构成投资建议。",
     )
 
 
@@ -78,15 +78,15 @@ def run_analysis(stock_code: str, *, agent: bool = False):
             status=AnalysisStatus.PARTIAL,
             stock_code=stock_code,
             company_name=stock_code,
-            as_of_date="unknown",
+            as_of_date="未知",
             verdict=None,
             confidence=Confidence.LOW,
             technical_evidence=[],
             risk_evidence=[],
-            unknowns=["provider fetch failed"],
-            data_warnings=[str(exc)],
-            basic_context=BasicContext(industry=None, company_summary="No company summary available."),
-            disclaimer="This report is educational only and is not investment advice.",
+            unknowns=["数据源暂时不可用，当前只生成降级报告。"],
+            data_warnings=[f"数据拉取失败：{exc}"],
+            basic_context=BasicContext(industry=None, company_summary="暂时没有拿到公司简介。"),
+            disclaimer="本报告仅供学习交流，不构成投资建议。",
         )
         markdown = render_markdown(result)
         return result, markdown

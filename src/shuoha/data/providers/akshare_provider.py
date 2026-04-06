@@ -37,7 +37,7 @@ class AKShareProvider:
             stock_code=stock_code,
             company_name=company_name,
             industry=None,
-            company_summary=f"A-share company {stock_code}",
+            company_summary=f"A 股上市公司 {stock_code}。",
             daily_history=daily_history,
             as_of_date=str(daily_history[-1]["date"]),
         )

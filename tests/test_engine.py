@@ -48,4 +48,4 @@ def test_run_analysis_returns_partial_when_provider_fails(monkeypatch):
     assert result.status.value == "partial"
     assert result.verdict is None
     assert "network down" in result.data_warnings[0]
-    assert "No verdict" in markdown
+    assert "当前无法给出结论" in markdown
