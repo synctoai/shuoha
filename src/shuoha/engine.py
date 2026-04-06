@@ -1,7 +1,14 @@
 import os
 
 from shuoha.data.providers.akshare_provider import AKShareProvider
-from shuoha.indicators import annualized_volatility, max_drawdown, simple_moving_average
+from shuoha.indicators import (
+    annualized_volatility,
+    max_drawdown,
+    moving_average_convergence_divergence,
+    relative_strength_index,
+    simple_moving_average,
+    volume_ratio,
+)
 from shuoha.reporting.agent_renderer import render_agent_markdown
 from shuoha.reporting.markdown_renderer import render_markdown
 from shuoha.rules import choose_verdict
@@ -18,17 +25,89 @@ from shuoha.schemas import (
 
 def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> AnalysisResult:
     closes = [row["close"] for row in rows]
+    volumes = [float(row.get("volume", 0.0)) for row in rows]
     ma20 = simple_moving_average(closes, 20)
     ma60 = simple_moving_average(closes, 60)
+    macd_line, signal_line, macd_histogram = moving_average_convergence_divergence(closes)
+    rsi14 = relative_strength_index(closes, 14)
+    latest_volume_ratio = volume_ratio(volumes, 20)
     volatility = annualized_volatility(closes)
     drawdown = max_drawdown(closes)
+    latest_close = closes[-1]
+    previous_close = closes[-2] if len(closes) >= 2 else closes[-1]
 
     technical_evidence = [
         EvidenceItem(
             name="ma_alignment",
-            signal=EvidenceSignal.POSITIVE if closes[-1] > ma20 and ma20 > ma60 else EvidenceSignal.NEUTRAL,
-            raw_value=f"close={closes[-1]},ma20={ma20},ma60={ma60}",
-            plain_text="价格和均线关系暂时偏稳。" if closes[-1] > ma20 and ma20 > ma60 else "均线关系没有形成很强的顺风。",
+            signal=(
+                EvidenceSignal.POSITIVE
+                if latest_close > ma20 and ma20 > ma60
+                else EvidenceSignal.NEGATIVE
+                if latest_close < ma20 and ma20 < ma60
+                else EvidenceSignal.NEUTRAL
+            ),
+            raw_value=f"close={latest_close:.2f},ma20={ma20:.2f},ma60={ma60:.2f}",
+            plain_text=(
+                "价格站在 20 日和 60 日均线之上，短中期趋势暂时偏强。"
+                if latest_close > ma20 and ma20 > ma60
+                else "价格跌到 20 日和 60 日均线下方，趋势暂时偏弱。"
+                if latest_close < ma20 and ma20 < ma60
+                else "均线关系还没有形成特别清晰的方向。"
+            ),
+        ),
+        EvidenceItem(
+            name="macd_trend",
+            signal=(
+                EvidenceSignal.POSITIVE
+                if macd_line > signal_line and macd_histogram > 0
+                else EvidenceSignal.NEGATIVE
+                if macd_line < signal_line and macd_histogram < 0
+                else EvidenceSignal.NEUTRAL
+            ),
+            raw_value=f"macd={macd_line:.4f},signal={signal_line:.4f},hist={macd_histogram:.4f}",
+            plain_text=(
+                "MACD 站在信号线上方，动量暂时偏多。"
+                if macd_line > signal_line and macd_histogram > 0
+                else "MACD 落在信号线下方，短期动量偏弱。"
+                if macd_line < signal_line and macd_histogram < 0
+                else "MACD 没有给出特别明确的方向。"
+            ),
+        ),
+        EvidenceItem(
+            name="rsi_state",
+            signal=(
+                EvidenceSignal.POSITIVE
+                if 50 <= rsi14 <= 70
+                else EvidenceSignal.NEGATIVE
+                if rsi14 < 40 or rsi14 > 75
+                else EvidenceSignal.NEUTRAL
+            ),
+            raw_value=round(rsi14, 2),
+            plain_text=(
+                "RSI 处在相对健康的区间，说明买卖力量暂时没有明显失衡。"
+                if 50 <= rsi14 <= 70
+                else "RSI 已经偏离舒适区，说明走势要么偏弱，要么有点过热。"
+                if rsi14 < 40 or rsi14 > 75
+                else "RSI 目前没有释放特别强的信号。"
+            ),
+        ),
+        EvidenceItem(
+            name="volume_confirmation",
+            signal=(
+                EvidenceSignal.POSITIVE
+                if latest_close > previous_close and latest_volume_ratio >= 1.15
+                else EvidenceSignal.NEGATIVE
+                if latest_close < previous_close and latest_volume_ratio >= 1.15
+                else EvidenceSignal.NEUTRAL
+            ),
+            raw_value=f"volume_ratio={latest_volume_ratio:.2f}",
+            plain_text=(
+                "最近一次上涨伴随明显放量，说明买盘有一定跟随。"
+                if latest_close > previous_close and latest_volume_ratio >= 1.15
+                else "最近一次下跌伴随明显放量，说明抛压还没有完全释放。"
+                if latest_close < previous_close and latest_volume_ratio >= 1.15
+                else "成交量没有明显放大，市场态度还偏谨慎。"
+            ),
         )
     ]
     risk_evidence = [
@@ -50,7 +129,7 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
     verdict_value, confidence_value = choose_verdict(
         positives=positives,
         negatives=negatives,
-        veto=False,
+        veto=drawdown > 0.35 and volatility > 0.45,
         partial=False,
     )
     return AnalysisResult(

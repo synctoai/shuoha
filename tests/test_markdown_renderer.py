@@ -35,3 +35,5 @@ def test_render_markdown_contains_quick_conclusion():
     assert "## 这只股票更适合什么人" in markdown
     assert "## 什么情况下这次判断会变化" in markdown
     assert "## 指标翻译" in markdown
+    assert "MACD" in markdown
+    assert "RSI" in markdown

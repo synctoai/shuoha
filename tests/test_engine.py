@@ -29,14 +29,38 @@ def test_verdict_enum_machine_values():
 
 def test_summarize_signals_yields_wait_for_mixed_signals():
     rows = [
-        {"date": "2026-01-01", "close": 100.0},
-        {"date": "2026-01-02", "close": 101.0},
-        {"date": "2026-01-03", "close": 102.0},
-        {"date": "2026-01-04", "close": 101.5},
-        {"date": "2026-01-05", "close": 101.0},
+        {"date": "2026-01-01", "close": 100.0, "volume": 1000.0},
+        {"date": "2026-01-02", "close": 101.0, "volume": 1000.0},
+        {"date": "2026-01-03", "close": 102.0, "volume": 1000.0},
+        {"date": "2026-01-04", "close": 101.5, "volume": 1000.0},
+        {"date": "2026-01-05", "close": 101.0, "volume": 1000.0},
     ] * 20
     result = summarize_signals("600519", "贵州茅台", rows)
     assert result.verdict.value == "wait"
+
+
+def test_summarize_signals_includes_macd_rsi_and_volume_evidence():
+    rows = [
+        {
+            "date": f"2026-03-{day:02d}",
+            "close": float(100 + day),
+            "volume": float(1000 + day * 10),
+        }
+        for day in range(1, 31)
+    ]
+    rows += [
+        {
+            "date": f"2026-04-{day:02d}",
+            "close": float(130 + day * 1.5),
+            "volume": float(1500 + day * 40),
+        }
+        for day in range(1, 31)
+    ]
+    result = summarize_signals("600519", "贵州茅台", rows)
+    evidence_names = {item.name for item in result.technical_evidence}
+    assert "macd_trend" in evidence_names
+    assert "rsi_state" in evidence_names
+    assert "volume_confirmation" in evidence_names
 
 
 def test_run_analysis_returns_partial_when_provider_fails(monkeypatch):
