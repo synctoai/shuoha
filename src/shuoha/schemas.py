@@ -1,0 +1,54 @@
+from enum import Enum
+
+from pydantic import BaseModel, Field
+
+
+class Verdict(str, Enum):
+    CONSIDER = "consider"
+    WAIT = "wait"
+    AVOID_FOR_NOW = "avoid_for_now"
+
+
+class Confidence(str, Enum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class AnalysisStatus(str, Enum):
+    OK = "ok"
+    PARTIAL = "partial"
+    ERROR = "error"
+
+
+class EvidenceSignal(str, Enum):
+    POSITIVE = "positive"
+    NEUTRAL = "neutral"
+    NEGATIVE = "negative"
+
+
+class EvidenceItem(BaseModel):
+    name: str
+    signal: EvidenceSignal
+    raw_value: str | float | int
+    plain_text: str
+
+
+class BasicContext(BaseModel):
+    industry: str | None = None
+    company_summary: str
+
+
+class AnalysisResult(BaseModel):
+    status: AnalysisStatus
+    stock_code: str
+    company_name: str
+    as_of_date: str
+    verdict: Verdict | None = None
+    confidence: Confidence
+    technical_evidence: list[EvidenceItem] = Field(default_factory=list)
+    risk_evidence: list[EvidenceItem] = Field(default_factory=list)
+    unknowns: list[str] = Field(default_factory=list)
+    data_warnings: list[str] = Field(default_factory=list)
+    basic_context: BasicContext | None = None
+    disclaimer: str
