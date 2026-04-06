@@ -247,6 +247,22 @@ def _beginner_mistakes(result: AnalysisResult) -> str:
     return "\n".join(mistakes[:3])
 
 
+def _counterexamples(result: AnalysisResult) -> str:
+    examples = []
+    volume_item = _find_evidence(result, "volume_confirmation")
+    drawdown_item = _find_evidence(result, "drawdown")
+    macd_item = _find_evidence(result, "macd_trend")
+    if volume_item and volume_item.signal.value != "positive":
+        examples.append("- 如果后续突然放量，而且价格还能稳稳站在关键均线上方，那这次偏保守的看法就可能过于谨慎。")
+    if drawdown_item and drawdown_item.signal.value == "negative":
+        examples.append("- 如果回撤快速收回，说明上方压力消化得比报告预期更快，这次对风险的判断就可能偏重。")
+    if macd_item and macd_item.signal.value == "positive":
+        examples.append("- 如果 MACD 继续走强、信号线同步抬升，而量能又跟上，那现在的观望结论就有被上修的可能。")
+    if result.data_warnings:
+        examples.append("- 如果后续补齐的数据和现在不一致，那这份报告最大的误差来源可能根本不是判断，而是底层样本。")
+    return _join_or_default(examples, "- 如果后续没有出现更强的新证据，这份报告大概率不会离当前判断太远。")
+
+
 def _indicator_glossary() -> str:
     return "\n".join(
         [
@@ -313,6 +329,9 @@ def render_markdown(result: AnalysisResult) -> str:
 
 ## 新手最容易犯的错
 {_beginner_mistakes(result)}
+
+## 这份报告最可能看错的地方
+{_counterexamples(result)}
 
 ## 这次判断的主要依据
 {decision_basis}

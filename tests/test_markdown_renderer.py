@@ -202,3 +202,53 @@ def test_render_markdown_adds_evidence_scorecard():
     assert "利空：`1` 条" in markdown
     assert "中性：`2` 条" in markdown
     assert "证据总分：`1`" in markdown
+
+
+def test_render_markdown_adds_counterexample_section():
+    result = AnalysisResult(
+        status=AnalysisStatus.OK,
+        stock_code="600519",
+        company_name="贵州茅台",
+        as_of_date="2026-04-06",
+        verdict=Verdict.WAIT,
+        bias=VerdictBias.NEUTRAL,
+        confidence=Confidence.MEDIUM,
+        technical_evidence=[
+            EvidenceItem(
+                name="ma_alignment",
+                signal=EvidenceSignal.POSITIVE,
+                raw_value="close=1500.00,ma20=1480.00,ma60=1450.00",
+                plain_text="价格站在 20 日和 60 日均线之上，短中期趋势暂时偏强。",
+            ),
+            EvidenceItem(
+                name="macd_trend",
+                signal=EvidenceSignal.POSITIVE,
+                raw_value="macd=1.2000,signal=0.8000,hist=0.4000",
+                plain_text="MACD 站在信号线上方，动量暂时偏多。",
+            ),
+            EvidenceItem(
+                name="volume_confirmation",
+                signal=EvidenceSignal.NEUTRAL,
+                raw_value="volume_ratio=0.95",
+                plain_text="成交量没有明显放大，市场态度还偏谨慎。",
+            ),
+        ],
+        risk_evidence=[
+            EvidenceItem(
+                name="drawdown",
+                signal=EvidenceSignal.NEGATIVE,
+                raw_value=0.22,
+                plain_text="距离高点回撤较深，需要更谨慎。",
+            )
+        ],
+        unknowns=[],
+        data_warnings=[],
+        basic_context=BasicContext(industry="白酒", company_summary="主营高端白酒。"),
+        disclaimer="本报告仅供学习交流，不构成投资建议。",
+    )
+
+    markdown = render_markdown(result)
+
+    assert "## 这份报告最可能看错的地方" in markdown
+    assert "如果后续突然放量" in markdown or "放量" in markdown
+    assert "如果回撤快速收回" in markdown or "回撤" in markdown
