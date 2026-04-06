@@ -8,3 +8,10 @@ def test_help_smoke():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "Analyze one A-share stock code" in result.stdout
+
+
+def test_cli_requires_stock_code_format():
+    runner = CliRunner()
+    result = runner.invoke(app, ["analyze", "abc"])
+    assert result.exit_code == 2
+    assert "Stock code must be 6 digits" in result.stdout
