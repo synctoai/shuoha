@@ -47,11 +47,54 @@ def test_provider_falls_back_to_tx_when_eastmoney_fails(monkeypatch):
         )
 
     monkeypatch.setattr("shuoha.data.providers.akshare_provider.ak.stock_zh_a_hist_tx", fake_tx)
+    monkeypatch.setattr(
+        "shuoha.data.providers.akshare_provider.ak.stock_profile_cninfo",
+        lambda **kwargs: pd.DataFrame(
+            [
+                {
+                    "公司名称": "贵州茅台酒股份有限公司",
+                    "A股简称": "贵州茅台",
+                    "所属行业": "酒、饮料和精制茶制造业",
+                    "主营业务": "贵州茅台酒系列产品的产品研制、酿造生产、包装和销售。",
+                    "机构简介": "公司主要从事高端白酒生产经营。",
+                }
+            ]
+        ),
+    )
 
     payload = AKShareProvider().fetch("600519")
     assert payload.stock_code == "600519"
+    assert payload.company_name == "贵州茅台"
+    assert payload.industry == "酒、饮料和精制茶制造业"
+    assert payload.company_summary == "贵州茅台酒系列产品的产品研制、酿造生产、包装和销售。"
     assert payload.daily_history[-1]["close"] == 10.0
-    assert payload.company_summary == "A 股上市公司 600519。"
     assert captured_kwargs["symbol"] == "sh600519"
     assert captured_kwargs["end_date"] == date.today().strftime("%Y%m%d")
     assert captured_kwargs["start_date"] == (date.today() - timedelta(days=730)).strftime("%Y%m%d")
+
+
+def test_provider_keeps_placeholder_metadata_when_profile_lookup_fails(monkeypatch):
+    monkeypatch.setattr(
+        "shuoha.data.providers.akshare_provider.ak.stock_zh_a_hist",
+        lambda **kwargs: pd.DataFrame(
+            [
+                {
+                    "日期": "2026-04-01",
+                    "开盘": 9.0,
+                    "最高": 11.0,
+                    "最低": 8.0,
+                    "收盘": 10.0,
+                    "成交量": 1234.0,
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        "shuoha.data.providers.akshare_provider.ak.stock_profile_cninfo",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("cninfo down")),
+    )
+
+    payload = AKShareProvider().fetch("600519")
+    assert payload.company_name == "600519"
+    assert payload.industry is None
+    assert payload.company_summary == "A 股上市公司 600519。"

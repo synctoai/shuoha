@@ -15,6 +15,32 @@ def tx_history_window(today: date | None = None, lookback_days: int = 730) -> tu
     return start_day.strftime("%Y%m%d"), current_day.strftime("%Y%m%d")
 
 
+def _clean_text(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text if text and text.lower() != "none" else None
+
+
+def fetch_company_profile(stock_code: str) -> tuple[str, str | None, str]:
+    try:
+        profile = ak.stock_profile_cninfo(symbol=stock_code)
+        if profile.empty:
+            raise ValueError("empty profile")
+        row = profile.to_dict(orient="records")[0]
+        company_name = _clean_text(row.get("A股简称")) or _clean_text(row.get("公司名称")) or stock_code
+        industry = _clean_text(row.get("所属行业"))
+        company_summary = (
+            _clean_text(row.get("主营业务"))
+            or _clean_text(row.get("经营范围"))
+            or _clean_text(row.get("机构简介"))
+            or f"A 股上市公司 {stock_code}。"
+        )
+        return company_name, industry, company_summary
+    except Exception:
+        return stock_code, None, f"A 股上市公司 {stock_code}。"
+
+
 def normalize_daily_history(rows: list[dict]) -> list[dict]:
     normalized = [
         {
@@ -41,12 +67,12 @@ class AKShareProvider:
             hist = ak.stock_zh_a_hist_tx(symbol=to_tx_symbol(stock_code), start_date=start_date, end_date=end_date)
             rows = hist.to_dict(orient="records")
         daily_history = normalize_daily_history(rows)
-        company_name = stock_code
+        company_name, industry, company_summary = fetch_company_profile(stock_code)
         return ProviderPayload(
             stock_code=stock_code,
             company_name=company_name,
-            industry=None,
-            company_summary=f"A 股上市公司 {stock_code}。",
+            industry=industry,
+            company_summary=company_summary,
             daily_history=daily_history,
             as_of_date=str(daily_history[-1]["date"]),
         )
