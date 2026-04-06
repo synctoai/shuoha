@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+import time
 
 import pandas as pd
 
@@ -23,7 +24,7 @@ def test_normalize_daily_history_stringifies_date_values():
     assert out[0]["date"] == "2026-04-02"
 
 
-def test_provider_falls_back_to_tx_when_eastmoney_fails(monkeypatch):
+def test_provider_falls_back_to_tx_when_eastmoney_fails(monkeypatch, tmp_path):
     captured_kwargs = {}
 
     monkeypatch.setattr(
@@ -62,7 +63,7 @@ def test_provider_falls_back_to_tx_when_eastmoney_fails(monkeypatch):
         ),
     )
 
-    payload = AKShareProvider().fetch("600519")
+    payload = AKShareProvider(cache_dir=tmp_path).fetch("600519")
     assert payload.stock_code == "600519"
     assert payload.company_name == "贵州茅台"
     assert payload.industry == "酒、饮料和精制茶制造业"
@@ -73,7 +74,7 @@ def test_provider_falls_back_to_tx_when_eastmoney_fails(monkeypatch):
     assert captured_kwargs["start_date"] == (date.today() - timedelta(days=730)).strftime("%Y%m%d")
 
 
-def test_provider_keeps_placeholder_metadata_when_profile_lookup_fails(monkeypatch):
+def test_provider_keeps_placeholder_metadata_when_profile_lookup_fails(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "shuoha.data.providers.akshare_provider.ak.stock_zh_a_hist",
         lambda **kwargs: pd.DataFrame(
@@ -94,7 +95,93 @@ def test_provider_keeps_placeholder_metadata_when_profile_lookup_fails(monkeypat
         lambda **kwargs: (_ for _ in ()).throw(RuntimeError("cninfo down")),
     )
 
-    payload = AKShareProvider().fetch("600519")
+    payload = AKShareProvider(cache_dir=tmp_path).fetch("600519")
     assert payload.company_name == "600519"
     assert payload.industry is None
     assert payload.company_summary == "A 股上市公司 600519。"
+
+
+def test_provider_uses_local_cache_after_first_fetch(tmp_path, monkeypatch):
+    call_counts = {"history": 0, "profile": 0}
+
+    def fake_history(**kwargs):
+        call_counts["history"] += 1
+        return pd.DataFrame(
+            [
+                {
+                    "日期": "2026-04-01",
+                    "开盘": 9.0,
+                    "最高": 11.0,
+                    "最低": 8.0,
+                    "收盘": 10.0,
+                    "成交量": 1234.0,
+                }
+            ]
+        )
+
+    def fake_profile(**kwargs):
+        call_counts["profile"] += 1
+        return pd.DataFrame(
+            [
+                {
+                    "公司名称": "贵州茅台酒股份有限公司",
+                    "A股简称": "贵州茅台",
+                    "所属行业": "酒、饮料和精制茶制造业",
+                    "主营业务": "贵州茅台酒系列产品的产品研制、酿造生产、包装和销售。",
+                }
+            ]
+        )
+
+    monkeypatch.setattr("shuoha.data.providers.akshare_provider.ak.stock_zh_a_hist", fake_history)
+    monkeypatch.setattr("shuoha.data.providers.akshare_provider.ak.stock_profile_cninfo", fake_profile)
+
+    provider = AKShareProvider(cache_dir=tmp_path, cache_ttl_seconds=3600)
+    first = provider.fetch("600519")
+    second = provider.fetch("600519")
+
+    assert first.company_name == "贵州茅台"
+    assert second.company_name == "贵州茅台"
+    assert call_counts == {"history": 1, "profile": 1}
+    assert (tmp_path / "history_600519.json").exists()
+    assert (tmp_path / "profile_600519.json").exists()
+
+
+def test_provider_fetches_history_and_profile_concurrently(tmp_path, monkeypatch):
+    def fake_history(**kwargs):
+        time.sleep(0.2)
+        return pd.DataFrame(
+            [
+                {
+                    "日期": "2026-04-01",
+                    "开盘": 9.0,
+                    "最高": 11.0,
+                    "最低": 8.0,
+                    "收盘": 10.0,
+                    "成交量": 1234.0,
+                }
+            ]
+        )
+
+    def fake_profile(**kwargs):
+        time.sleep(0.2)
+        return pd.DataFrame(
+            [
+                {
+                    "公司名称": "贵州茅台酒股份有限公司",
+                    "A股简称": "贵州茅台",
+                    "所属行业": "酒、饮料和精制茶制造业",
+                    "主营业务": "贵州茅台酒系列产品的产品研制、酿造生产、包装和销售。",
+                }
+            ]
+        )
+
+    monkeypatch.setattr("shuoha.data.providers.akshare_provider.ak.stock_zh_a_hist", fake_history)
+    monkeypatch.setattr("shuoha.data.providers.akshare_provider.ak.stock_profile_cninfo", fake_profile)
+
+    provider = AKShareProvider(cache_dir=tmp_path, cache_ttl_seconds=3600)
+    start = time.perf_counter()
+    payload = provider.fetch("600519")
+    elapsed = time.perf_counter() - start
+
+    assert payload.company_name == "贵州茅台"
+    assert elapsed < 0.35
