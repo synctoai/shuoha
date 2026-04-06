@@ -14,10 +14,24 @@
 - [CHANGELOG.md](/Users/leeeeeee/code/shuoha/CHANGELOG.md)
 - [LICENSE](/Users/leeeeeee/code/shuoha/LICENSE)
 
-当前主入口：
+当前用户入口：
+
+macOS:
 
 ```bash
-uv run shuoha analyze 600519
+curl -fsSL https://raw.githubusercontent.com/synctoai/shuoha/main/scripts/install.sh | sh
+```
+
+Windows:
+
+```powershell
+irm https://raw.githubusercontent.com/synctoai/shuoha/main/scripts/install.ps1 | iex
+```
+
+安装完成后，直接运行：
+
+```bash
+shuoha analyze 600519
 ```
 
 ## 面向用户
@@ -48,6 +62,58 @@ uv run shuoha analyze 600519
 
 ### 快速开始
 
+macOS 一行安装：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/synctoai/shuoha/main/scripts/install.sh | sh
+```
+
+Windows 一行安装：
+
+```powershell
+irm https://raw.githubusercontent.com/synctoai/shuoha/main/scripts/install.ps1 | iex
+```
+
+安装完成后，直接分析：
+
+```bash
+shuoha analyze 600519
+```
+
+如果你只是普通用户，到这里就够了。
+
+### 升级与卸载
+
+升级到最新版本：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/synctoai/shuoha/main/scripts/install.sh | sh
+```
+
+安装指定版本：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/synctoai/shuoha/main/scripts/install.sh | sh -s -- --version v0.1.0
+```
+
+卸载：
+
+macOS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/synctoai/shuoha/main/scripts/uninstall.sh | sh
+```
+
+Windows:
+
+```powershell
+irm https://raw.githubusercontent.com/synctoai/shuoha/main/scripts/uninstall.ps1 | iex
+```
+
+### 开发者启动方式
+
+如果你准备参与开发，而不是单纯使用 CLI，再看这部分。
+
 环境要求：
 
 - Python `3.12+`
@@ -77,25 +143,25 @@ out/600519/evidence.json
 默认摘要模式：
 
 ```bash
-uv run shuoha analyze 600519
+shuoha analyze 600519
 ```
 
 完整终端报告模式：
 
 ```bash
-uv run shuoha analyze 600519 --full
+shuoha analyze 600519 --full
 ```
 
 显式使用摘要模式：
 
 ```bash
-uv run shuoha analyze 600519 --brief
+shuoha analyze 600519 --brief
 ```
 
 自定义输出目录：
 
 ```bash
-uv run shuoha analyze 600519 --output-dir ./tmp/600519
+shuoha analyze 600519 --output-dir ./tmp/600519
 ```
 
 ### 输出内容说明
@@ -191,7 +257,7 @@ export OPENAI_API_KEY=你的密钥
 运行：
 
 ```bash
-uv run shuoha analyze 600519 --agent
+shuoha analyze 600519 --agent
 ```
 
 说明：
@@ -199,7 +265,8 @@ uv run shuoha analyze 600519 --agent
 - `--agent` 当前只负责把已有证据改写成更自然的中文 Markdown
 - 它不负责生成底层证据
 - 它不应该修改 deterministic verdict
-- 没有 `OPENAI_API_KEY` 时，系统会回退到本地 renderer
+- 没有 `OPENAI_API_KEY` 或当前运行环境没有 `openai` 依赖时，系统会回退到本地 renderer
+- 面向普通用户的预编译 release 默认优先保证确定性主链路，`--agent` 更适合源码安装或开发者环境
 
 ### 免责声明
 
@@ -312,6 +379,7 @@ flowchart LR
 
 ```text
 src/shuoha/
+  __main__.py                    # python -m shuoha / 打包入口
   cli.py                         # Typer CLI 入口
   engine.py                      # 分析主流程
   indicators.py                  # 技术指标计算
@@ -330,11 +398,19 @@ src/shuoha/
 tests/
   test_akshare_provider.py
   test_cli.py
+  test_distribution_contract.py
   test_engine.py
   test_indicators.py
+  test_main.py
   test_markdown_renderer.py
   test_rules.py
   test_terminal_renderer.py
+
+scripts/
+  install.sh                     # macOS 一行安装脚本
+  uninstall.sh                   # macOS 卸载脚本
+  install.ps1                    # Windows 一行安装脚本
+  uninstall.ps1                  # Windows 卸载脚本
 ```
 
 ### 本地开发
@@ -363,6 +439,18 @@ uv run shuoha analyze --help
 uv run shuoha analyze 600519
 uv run shuoha analyze 600519 --full
 ```
+
+### 分发与发布
+
+面向用户的默认安装方式不是 `pip`、`uv` 或 `pipx`，而是下载预编译二进制。
+
+当前 release 产物：
+
+- `shuoha-darwin-amd64.tar.gz`
+- `shuoha-darwin-arm64.tar.gz`
+- `shuoha-windows-amd64.zip`
+
+安装和卸载脚本说明见 [docs/distribution.md](/Users/leeeeeee/code/shuoha/docs/distribution.md)。
 
 ### 当前能力边界
 
@@ -430,6 +518,7 @@ uv run shuoha analyze 600519 --full
 
 - `uv run --extra dev pytest -v`
 - `uv run shuoha analyze 600519`
+- 新 release 已生成预编译二进制
 - README / CHANGELOG / CLI 帮助文本已同步
 
 ## 一句话总结

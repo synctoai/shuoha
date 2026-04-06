@@ -23,15 +23,22 @@ simple `MAJOR.MINOR.PATCH` versioning scheme.
 - Added optional `--agent` Markdown rewrite path.
 - Added terminal-specific renderer for better scanability.
 - Added user-facing `README.md` and developer-facing `CONTRIBUTING.md`.
+- Added module entrypoint for packaged execution via `python -m shuoha`.
+- Added one-line install and uninstall scripts for macOS and Windows.
+- Added GitHub Actions release workflow for standalone binaries.
+- Added distribution contract documentation for release assets and install paths.
 
 ### Changed
 
 - Localized the CLI and report experience to Chinese.
 - Improved report readability for beginners with sharper action guidance and bias explanations.
 - Improved provider stability with graceful degradation and cache-backed repeated analysis.
+- Changed the primary user install path from local Python tooling to prebuilt binaries plus installer scripts.
 
 ### Fixed
 
 - Fixed provider failure handling so the CLI degrades to partial results instead of crashing.
 - Fixed historical data fallback behavior when Eastmoney is unavailable.
 - Fixed output flow so users always get saved artifacts even when terminal mode changes.
+- Fixed packaged binary build by collecting `akshare` package data required at runtime.
+- Fixed `--agent` path so missing LLM dependencies fall back to the local renderer instead of crashing.

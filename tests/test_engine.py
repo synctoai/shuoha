@@ -82,3 +82,34 @@ def test_run_analysis_returns_partial_when_provider_fails(monkeypatch):
     assert result.bias.value == "neutral"
     assert "network down" in result.data_warnings[0]
     assert "当前无法给出结论" in markdown
+
+
+def test_run_analysis_falls_back_to_local_renderer_when_agent_path_unavailable(monkeypatch):
+    payload = ProviderPayload(
+        stock_code="600519",
+        company_name="贵州茅台",
+        industry="白酒",
+        company_summary="主营高端白酒。",
+        daily_history=[
+            {"date": f"2026-03-{day:02d}", "close": float(100 + day), "volume": float(1000 + day * 10)}
+            for day in range(1, 31)
+        ]
+        + [
+            {"date": f"2026-04-{day:02d}", "close": float(130 + day), "volume": float(1500 + day * 40)}
+            for day in range(1, 31)
+        ],
+        as_of_date="2026-04-30",
+    )
+
+    monkeypatch.setattr("shuoha.engine.AKShareProvider.fetch", lambda self, stock_code: payload)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr("shuoha.engine.render_markdown", lambda result: "fallback markdown")
+    monkeypatch.setattr(
+        "shuoha.engine.render_agent_markdown",
+        lambda result: (_ for _ in ()).throw(ModuleNotFoundError("openai")),
+    )
+
+    result, markdown = run_analysis("600519", agent=True)
+
+    assert markdown == "fallback markdown"
+    assert any("LLM 改写不可用" in warning for warning in result.data_warnings)

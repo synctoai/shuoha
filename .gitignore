@@ -1,4 +1,7 @@
 .agents/
 __pycache__/
 .cache/
+build/
+dist/
 out/
+*.spec

@@ -175,5 +175,13 @@ def run_analysis(stock_code: str, *, agent: bool = False):
 
     result = summarize_signals(payload.stock_code, payload.company_name, payload.daily_history)
     result.basic_context = BasicContext(industry=payload.industry, company_summary=payload.company_summary)
-    markdown = render_agent_markdown(result) if agent and os.environ.get("OPENAI_API_KEY") else render_markdown(result)
+
+    if agent and os.environ.get("OPENAI_API_KEY"):
+        try:
+            markdown = render_agent_markdown(result)
+        except Exception as exc:
+            result.data_warnings.append(f"LLM 改写不可用，已回退到本地报告：{exc}")
+            markdown = render_markdown(result)
+    else:
+        markdown = render_markdown(result)
     return result, markdown

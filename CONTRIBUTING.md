@@ -35,6 +35,7 @@ export OPENAI_API_KEY=你的密钥
 
 ```text
 src/shuoha/
+  __main__.py                    # python -m shuoha / 打包入口
   cli.py                         # 命令入口
   engine.py                      # 分析主流程
   indicators.py                  # 技术指标
@@ -49,6 +50,11 @@ src/shuoha/
     agent_renderer.py            # 可选 LLM 改写层
     output.py                    # 落盘
 tests/
+scripts/
+  install.sh                     # macOS 安装脚本
+  uninstall.sh                   # macOS 卸载脚本
+  install.ps1                    # Windows 安装脚本
+  uninstall.ps1                  # Windows 卸载脚本
 ```
 
 建议的理解顺序：
@@ -77,7 +83,25 @@ uv run shuoha analyze 600519 --full
 
 ```bash
 uv run shuoha analyze --help
+uv run python -m shuoha --help
 ```
+
+## 面向用户的安装方式
+
+普通用户不应该先装 Python 或 `uv`。
+
+当前推荐入口：
+
+- macOS:
+  - `curl -fsSL https://raw.githubusercontent.com/synctoai/shuoha/main/scripts/install.sh | sh`
+- Windows:
+  - `irm https://raw.githubusercontent.com/synctoai/shuoha/main/scripts/install.ps1 | iex`
+
+也就是说：
+
+- `README.md` 的用户侧应该优先写一行安装
+- `uv` 路线只留给开发者
+- 发布链路要保证 GitHub Releases 上始终有可下载的二进制
 
 ## 提交改动时的基本要求
 
@@ -88,6 +112,52 @@ uv run shuoha analyze --help
 - 不要只改解释文案而不考虑 `evidence.json` 是否仍然合理
 - 不要把 README 写得比真实实现更强
 - 用户可见行为变化，必须补测试或至少补验证路径
+
+## 发布与分发
+
+当前 release contract 见 [docs/distribution.md](/Users/leeeeeee/code/shuoha/docs/distribution.md)。
+
+核心约束：
+
+- 安装脚本默认从 GitHub Releases 拉 `latest`
+- 也支持显式版本，例如 `v0.1.0`
+- 用户拿到的是预编译二进制，不是 Python 源码
+
+当前约定的 release 产物：
+
+- `shuoha-darwin-amd64.tar.gz`
+- `shuoha-darwin-arm64.tar.gz`
+- `shuoha-windows-amd64.zip`
+
+### 如何发一个新版本
+
+1. 先确认：
+   - `uv run --extra dev pytest -v`
+   - `uv run shuoha analyze 600519`
+2. 更新 [CHANGELOG.md](/Users/leeeeeee/code/shuoha/CHANGELOG.md)
+3. 推送版本 tag：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+4. 等 `.github/workflows/release.yml` 构建并上传 release assets
+5. 用真实安装命令做一次 smoke test
+
+建议至少验证：
+
+- macOS:
+  - `curl -fsSL https://raw.githubusercontent.com/synctoai/shuoha/main/scripts/install.sh | sh`
+- Windows:
+  - `irm https://raw.githubusercontent.com/synctoai/shuoha/main/scripts/install.ps1 | iex`
+
+如果 release asset 命名改了，记得同步更新：
+
+- `scripts/install.sh`
+- `scripts/install.ps1`
+- `docs/distribution.md`
+- `README.md`
 
 ## 如何新增一个 Provider
 
