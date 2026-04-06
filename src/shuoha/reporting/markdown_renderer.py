@@ -24,6 +24,13 @@ def _join_or_default(lines: list[str], default: str) -> str:
     return "\n".join(lines) if lines else default
 
 
+def _find_evidence(result: AnalysisResult, name: str):
+    for item in result.technical_evidence + result.risk_evidence:
+        if item.name == name:
+            return item
+    return None
+
+
 def _summary_sentence(result: AnalysisResult, verdict_label: str, confidence_label: str) -> str:
     if result.verdict is None:
         return "当前数据不足，暂时无法给出可靠结论。你现在更应该先确认数据是否完整，而不是急着做决定。"
@@ -53,6 +60,86 @@ def _change_conditions(result: AnalysisResult) -> str:
     if result.data_warnings:
         conditions.append("- 如果后续数据恢复完整，系统可能给出比现在更明确的结论。")
     return _join_or_default(conditions, "- 如果后续技术面和风险面都没有明显变化，这次判断大概率会维持不变。")
+
+
+def _sharp_review(result: AnalysisResult) -> str:
+    volume_item = _find_evidence(result, "volume_confirmation")
+    trend_item = _find_evidence(result, "ma_alignment")
+    macd_item = _find_evidence(result, "macd_trend")
+    risk_item = _find_evidence(result, "drawdown")
+    if result.verdict is None:
+        return "数据都不完整，还想急着下手，这不是分析，是拿真金白银赌接口心情。"
+    if result.verdict.value == "consider":
+        return "这票不是不能看，但还没强到值得你闭眼冲。真想做，也该把它当候选，不该当信仰。"
+    if result.verdict.value == "avoid_for_now":
+        return "现在去碰这票，不像抄底，更像主动往不确定性上扑。新手最忌讳的就是拿勇气代替证据。"
+    if (
+        trend_item
+        and trend_item.signal.value == "positive"
+        and macd_item
+        and macd_item.signal.value == "positive"
+        and volume_item
+        and volume_item.signal.value != "positive"
+    ):
+        return "趋势和动量看着不丑，但量能没跟上，你现在冲进去，更像是在替别人接情绪。"
+    if risk_item and risk_item.signal.value == "negative":
+        return "它不是完全不能看，但回撤还摆在那里。新手现在硬上，多半不是在抓机会，而是在给自己找波动教育。"
+    return "这票最会骗新手的地方，就是看着不弱，但也远没强到值得你现在冒险。"
+
+
+def _why_not_buy_yet(result: AnalysisResult) -> str:
+    reasons = []
+    trend_item = _find_evidence(result, "ma_alignment")
+    macd_item = _find_evidence(result, "macd_trend")
+    volume_item = _find_evidence(result, "volume_confirmation")
+    rsi_item = _find_evidence(result, "rsi_state")
+    drawdown_item = _find_evidence(result, "drawdown")
+    if trend_item and trend_item.signal.value == "positive":
+        reasons.append("- 趋势不是坏消息，但趋势偏强不等于买点已经成熟。")
+    if macd_item and macd_item.signal.value == "positive":
+        reasons.append("- 动量有改善，说明这票还有人看，但还不足以单独支撑你现在出手。")
+    if volume_item and volume_item.signal.value != "positive":
+        reasons.append("- 量能没有把上涨态度坐实，说明市场更像是在试探，不是在一致看多。")
+    if drawdown_item and drawdown_item.signal.value == "negative":
+        reasons.append("- 回撤还偏深，说明上方套牢和情绪压力还没真正消化完。")
+    if rsi_item and rsi_item.signal.value == "negative":
+        reasons.append("- RSI 已经偏离舒适区，现在追进去，容易买在情绪而不是买在性价比。")
+    return _join_or_default(reasons, "- 当前没有足够强的顺风，先别把“看得懂”误判成“该下单”。")
+
+
+def _watch_points(result: AnalysisResult) -> str:
+    points = []
+    volume_item = _find_evidence(result, "volume_confirmation")
+    drawdown_item = _find_evidence(result, "drawdown")
+    macd_item = _find_evidence(result, "macd_trend")
+    if volume_item and volume_item.signal.value != "positive":
+        points.append("- 如果后续上涨开始放量，说明资金态度比现在更真，结论才更有机会转积极。")
+    else:
+        points.append("- 如果后续量能继续维持，说明这波走势至少不是纯情绪硬拉。")
+    if drawdown_item and drawdown_item.signal.value == "negative":
+        points.append("- 如果回撤继续扩大，说明压力还没出清，那现在的观望都可能不够保守。")
+    else:
+        points.append("- 如果价格重新跌回关键均线下方，说明当前趋势强度需要重新评估。")
+    if macd_item and macd_item.signal.value == "positive":
+        points.append("- 如果 MACD 继续维持在信号线上方，说明动量没散；一旦重新掉下去，就别再自我安慰。")
+    else:
+        points.append("- 如果 MACD 重新转强，再配合量能改善，才更像一个像样的右侧信号。")
+    return "\n".join(points[:3])
+
+
+def _beginner_mistakes(result: AnalysisResult) -> str:
+    mistakes = []
+    trend_item = _find_evidence(result, "ma_alignment")
+    volume_item = _find_evidence(result, "volume_confirmation")
+    drawdown_item = _find_evidence(result, "drawdown")
+    if trend_item and trend_item.signal.value == "positive":
+        mistakes.append("- 看到均线和 MACD 偏强，就以为已经到了可以闭眼买的阶段。")
+    if volume_item and volume_item.signal.value != "positive":
+        mistakes.append("- 忽略量能没跟上，只因为图形不难看就急着冲进去。")
+    if drawdown_item and drawdown_item.signal.value == "negative":
+        mistakes.append("- 低估回撤带来的心理压力，计划拿长线，结果一震荡就先把自己洗出去。")
+    mistakes.append("- 把“这票还能看”误听成“这票现在就该买”。")
+    return "\n".join(mistakes[:3])
 
 
 def _indicator_glossary() -> str:
@@ -95,6 +182,9 @@ def render_markdown(result: AnalysisResult) -> str:
 
 {_summary_sentence(result, label, confidence)}
 
+## 锐评
+{_sharp_review(result)}
+
 ## 这家公司是做什么的
 - 行业：{industry}
 - 简介：{company_summary}
@@ -104,6 +194,15 @@ def render_markdown(result: AnalysisResult) -> str:
 
 ## 需要小心的点
 {risks}
+
+## 为什么先别急着买
+{_why_not_buy_yet(result)}
+
+## 接下来盯什么
+{_watch_points(result)}
+
+## 新手最容易犯的错
+{_beginner_mistakes(result)}
 
 ## 这次判断的主要依据
 {decision_basis}
