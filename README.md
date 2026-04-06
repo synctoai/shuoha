@@ -197,6 +197,8 @@ uv run shuoha analyze 600519 --agent
 
 ## 面向技术
 
+如果你准备参与开发，先看 [CONTRIBUTING.md](/Users/leeeeeee/code/shuoha/CONTRIBUTING.md)。
+
 ### 当前技术栈
 
 - `Python 3.12+`
