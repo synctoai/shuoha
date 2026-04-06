@@ -20,6 +20,21 @@ STATUS_LABELS = {
 }
 
 
+def _parse_metric_map(raw_value) -> dict[str, float]:
+    if not isinstance(raw_value, str):
+        return {}
+    metrics = {}
+    for part in raw_value.split(","):
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        try:
+            metrics[key.strip()] = float(value.strip())
+        except ValueError:
+            continue
+    return metrics
+
+
 def _join_or_default(lines: list[str], default: str) -> str:
     return "\n".join(lines) if lines else default
 
@@ -112,16 +127,51 @@ def _watch_points(result: AnalysisResult) -> str:
     volume_item = _find_evidence(result, "volume_confirmation")
     drawdown_item = _find_evidence(result, "drawdown")
     macd_item = _find_evidence(result, "macd_trend")
+    trend_item = _find_evidence(result, "ma_alignment")
+    volume_metrics = _parse_metric_map(volume_item.raw_value) if volume_item else {}
+    macd_metrics = _parse_metric_map(macd_item.raw_value) if macd_item else {}
+    trend_metrics = _parse_metric_map(trend_item.raw_value) if trend_item else {}
+    volume_ratio = volume_metrics.get("volume_ratio")
+    macd_signal = macd_metrics.get("signal")
+    ma20 = trend_metrics.get("ma20")
+    ma60 = trend_metrics.get("ma60")
     if volume_item and volume_item.signal.value != "positive":
-        points.append("- 如果后续上涨开始放量，说明资金态度比现在更真，结论才更有机会转积极。")
+        threshold = "1.15 倍近 20 日均量"
+        if volume_ratio is not None:
+            if ma20 is not None and ma60 is not None:
+                points.append(
+                    f"- 如果后续量能从现在的 `{volume_ratio:.2f}` 提升到至少 `{threshold}`，而且价格还能站稳 `MA20={ma20:.2f}` 和 `MA60={ma60:.2f}` 上方，说明资金态度比现在更真。"
+                )
+            else:
+                points.append(
+                    f"- 如果后续量能从现在的 `{volume_ratio:.2f}` 提升到至少 `{threshold}`，而且价格还能站稳均线，说明资金态度比现在更真。"
+                )
+        else:
+            points.append(f"- 如果后续上涨开始放量，最好至少达到 `{threshold}`，结论才更有机会转积极。")
     else:
-        points.append("- 如果后续量能继续维持，说明这波走势至少不是纯情绪硬拉。")
+        points.append("- 如果后续量能继续维持在放量区，同时价格不跌破关键均线，说明这波走势至少不是纯情绪硬拉。")
     if drawdown_item and drawdown_item.signal.value == "negative":
-        points.append("- 如果回撤继续扩大，说明压力还没出清，那现在的观望都可能不够保守。")
+        drawdown_value = float(drawdown_item.raw_value) if isinstance(drawdown_item.raw_value, int | float) else None
+        if drawdown_value is not None:
+            points.append(
+                f"- 这票当前回撤已经到 `{drawdown_value:.0%}`，高于系统警戒线 `20%`；如果继续扩大并往 `35%` 靠近，说明压力还没出清，那现在的观望都可能不够保守。"
+            )
+        else:
+            points.append("- 如果回撤高于 `20%` 后还继续扩大并逼近 `35%`，说明压力还没出清，那现在的观望都可能不够保守。")
     else:
-        points.append("- 如果价格重新跌回关键均线下方，说明当前趋势强度需要重新评估。")
+        if ma20 is not None and ma60 is not None:
+            points.append(
+                f"- 如果价格重新跌回 `MA20={ma20:.2f}` 或 `MA60={ma60:.2f}` 下方，说明当前趋势强度需要重新评估。"
+            )
+        else:
+            points.append("- 如果价格重新跌回关键均线下方，说明当前趋势强度需要重新评估。")
     if macd_item and macd_item.signal.value == "positive":
-        points.append("- 如果 MACD 继续维持在信号线上方，说明动量没散；一旦重新掉下去，就别再自我安慰。")
+        if macd_signal is not None:
+            points.append(
+                f"- 如果 MACD 继续维持在信号线 `{macd_signal:.4f}` 上方，说明动量没散；一旦重新掉下去，就别再自我安慰。"
+            )
+        else:
+            points.append("- 如果 MACD 继续维持在信号线上方，说明动量没散；一旦重新掉下去，就别再自我安慰。")
     else:
         points.append("- 如果 MACD 重新转强，再配合量能改善，才更像一个像样的右侧信号。")
     return "\n".join(points[:3])
