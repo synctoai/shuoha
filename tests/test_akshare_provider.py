@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 import pandas as pd
 
 from shuoha.data.providers.akshare_provider import AKShareProvider, normalize_daily_history
@@ -22,16 +24,19 @@ def test_normalize_daily_history_stringifies_date_values():
 
 
 def test_provider_falls_back_to_tx_when_eastmoney_fails(monkeypatch):
+    captured_kwargs = {}
+
     monkeypatch.setattr(
         "shuoha.data.providers.akshare_provider.ak.stock_zh_a_hist",
         lambda **kwargs: (_ for _ in ()).throw(RuntimeError("eastmoney down")),
     )
-    monkeypatch.setattr(
-        "shuoha.data.providers.akshare_provider.ak.stock_zh_a_hist_tx",
-        lambda **kwargs: pd.DataFrame(
+
+    def fake_tx(**kwargs):
+        captured_kwargs.update(kwargs)
+        return pd.DataFrame(
             [
                 {
-                    "date": __import__("datetime").date(2026, 4, 1),
+                    "date": date(2026, 4, 1),
                     "open": 9.0,
                     "high": 11.0,
                     "low": 8.0,
@@ -39,10 +44,14 @@ def test_provider_falls_back_to_tx_when_eastmoney_fails(monkeypatch):
                     "amount": 1234.0,
                 }
             ]
-        ),
-    )
+        )
+
+    monkeypatch.setattr("shuoha.data.providers.akshare_provider.ak.stock_zh_a_hist_tx", fake_tx)
 
     payload = AKShareProvider().fetch("600519")
     assert payload.stock_code == "600519"
     assert payload.daily_history[-1]["close"] == 10.0
     assert payload.company_summary == "A 股上市公司 600519。"
+    assert captured_kwargs["symbol"] == "sh600519"
+    assert captured_kwargs["end_date"] == date.today().strftime("%Y%m%d")
+    assert captured_kwargs["start_date"] == (date.today() - timedelta(days=730)).strftime("%Y%m%d")

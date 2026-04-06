@@ -31,3 +31,7 @@ def test_render_markdown_contains_quick_conclusion():
     assert "## 快速结论" in markdown
     assert "结论：`观望`" in markdown
     assert "状态：`正常`" in markdown
+    assert "## 这次判断的主要依据" in markdown
+    assert "## 这只股票更适合什么人" in markdown
+    assert "## 什么情况下这次判断会变化" in markdown
+    assert "## 指标翻译" in markdown

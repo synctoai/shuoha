@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 import akshare as ak
 
 from shuoha.data.providers.base import ProviderPayload
@@ -5,6 +7,12 @@ from shuoha.data.providers.base import ProviderPayload
 
 def to_tx_symbol(stock_code: str) -> str:
     return f"sh{stock_code}" if stock_code.startswith("6") else f"sz{stock_code}"
+
+
+def tx_history_window(today: date | None = None, lookback_days: int = 730) -> tuple[str, str]:
+    current_day = today or date.today()
+    start_day = current_day - timedelta(days=lookback_days)
+    return start_day.strftime("%Y%m%d"), current_day.strftime("%Y%m%d")
 
 
 def normalize_daily_history(rows: list[dict]) -> list[dict]:
@@ -29,7 +37,8 @@ class AKShareProvider:
             hist = ak.stock_zh_a_hist(symbol=stock_code, period="daily", adjust="")
             rows = hist.to_dict(orient="records")
         except Exception:
-            hist = ak.stock_zh_a_hist_tx(symbol=to_tx_symbol(stock_code), start_date="19700101", end_date="20500101")
+            start_date, end_date = tx_history_window()
+            hist = ak.stock_zh_a_hist_tx(symbol=to_tx_symbol(stock_code), start_date=start_date, end_date=end_date)
             rows = hist.to_dict(orient="records")
         daily_history = normalize_daily_history(rows)
         company_name = stock_code
