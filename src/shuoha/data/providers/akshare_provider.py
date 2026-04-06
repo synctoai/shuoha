@@ -3,15 +3,19 @@ import akshare as ak
 from shuoha.data.providers.base import ProviderPayload
 
 
+def to_tx_symbol(stock_code: str) -> str:
+    return f"sh{stock_code}" if stock_code.startswith("6") else f"sz{stock_code}"
+
+
 def normalize_daily_history(rows: list[dict]) -> list[dict]:
     normalized = [
         {
-            "date": str(row["日期"]),
-            "open": float(row["开盘"]),
-            "high": float(row["最高"]),
-            "low": float(row["最低"]),
-            "close": float(row["收盘"]),
-            "volume": float(row["成交量"]),
+            "date": str(row.get("日期", row.get("date"))),
+            "open": float(row.get("开盘", row.get("open"))),
+            "high": float(row.get("最高", row.get("high"))),
+            "low": float(row.get("最低", row.get("low"))),
+            "close": float(row.get("收盘", row.get("close"))),
+            "volume": float(row.get("成交量", row.get("volume", row.get("amount", 0)))),
         }
         for row in rows
     ]
@@ -21,8 +25,12 @@ def normalize_daily_history(rows: list[dict]) -> list[dict]:
 
 class AKShareProvider:
     def fetch(self, stock_code: str) -> ProviderPayload:
-        hist = ak.stock_zh_a_hist(symbol=stock_code, period="daily", adjust="")
-        rows = hist.to_dict(orient="records")
+        try:
+            hist = ak.stock_zh_a_hist(symbol=stock_code, period="daily", adjust="")
+            rows = hist.to_dict(orient="records")
+        except Exception:
+            hist = ak.stock_zh_a_hist_tx(symbol=to_tx_symbol(stock_code), start_date="19700101", end_date="20500101")
+            rows = hist.to_dict(orient="records")
         daily_history = normalize_daily_history(rows)
         company_name = stock_code
         return ProviderPayload(
