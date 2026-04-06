@@ -1,24 +1,75 @@
 from shuoha.data.providers.akshare_provider import AKShareProvider
+from shuoha.indicators import annualized_volatility, max_drawdown, simple_moving_average
 from shuoha.reporting.markdown_renderer import render_markdown
-from shuoha.schemas import AnalysisResult, AnalysisStatus, BasicContext, Confidence
+from shuoha.rules import choose_verdict
+from shuoha.schemas import (
+    AnalysisResult,
+    AnalysisStatus,
+    BasicContext,
+    Confidence,
+    EvidenceItem,
+    EvidenceSignal,
+    Verdict,
+)
+
+
+def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> AnalysisResult:
+    closes = [row["close"] for row in rows]
+    ma20 = simple_moving_average(closes, 20)
+    ma60 = simple_moving_average(closes, 60)
+    volatility = annualized_volatility(closes)
+    drawdown = max_drawdown(closes)
+
+    technical_evidence = [
+        EvidenceItem(
+            name="ma_alignment",
+            signal=EvidenceSignal.POSITIVE if closes[-1] > ma20 and ma20 > ma60 else EvidenceSignal.NEUTRAL,
+            raw_value=f"close={closes[-1]},ma20={ma20},ma60={ma60}",
+            plain_text="价格和均线关系暂时偏稳。" if closes[-1] > ma20 and ma20 > ma60 else "均线关系没有形成很强的顺风。",
+        )
+    ]
+    risk_evidence = [
+        EvidenceItem(
+            name="volatility",
+            signal=EvidenceSignal.NEGATIVE if volatility > 0.35 else EvidenceSignal.NEUTRAL,
+            raw_value=round(volatility, 4),
+            plain_text="波动偏大，对新手不太友好。" if volatility > 0.35 else "波动没有明显失控。",
+        ),
+        EvidenceItem(
+            name="drawdown",
+            signal=EvidenceSignal.NEGATIVE if drawdown > 0.20 else EvidenceSignal.NEUTRAL,
+            raw_value=round(drawdown, 4),
+            plain_text="距离高点回撤较深，需要更谨慎。" if drawdown > 0.20 else "回撤还没有到特别危险的程度。",
+        ),
+    ]
+    positives = sum(item.signal == EvidenceSignal.POSITIVE for item in technical_evidence + risk_evidence)
+    negatives = sum(item.signal == EvidenceSignal.NEGATIVE for item in technical_evidence + risk_evidence)
+    verdict_value, confidence_value = choose_verdict(
+        positives=positives,
+        negatives=negatives,
+        veto=False,
+        partial=False,
+    )
+    return AnalysisResult(
+        status=AnalysisStatus.OK,
+        stock_code=stock_code,
+        company_name=company_name,
+        as_of_date=rows[-1]["date"],
+        verdict=Verdict(verdict_value),
+        confidence=Confidence(confidence_value),
+        technical_evidence=technical_evidence,
+        risk_evidence=risk_evidence,
+        unknowns=[],
+        data_warnings=[],
+        basic_context=BasicContext(industry=None, company_summary=f"{company_name} company summary pending provider enrichment."),
+        disclaimer="This report is educational only and is not investment advice.",
+    )
 
 
 def run_analysis(stock_code: str):
     provider = AKShareProvider()
     payload = provider.fetch(stock_code)
-    result = AnalysisResult(
-        status=AnalysisStatus.PARTIAL,
-        stock_code=payload.stock_code,
-        company_name=payload.company_name,
-        as_of_date=payload.as_of_date,
-        verdict=None,
-        confidence=Confidence.LOW,
-        technical_evidence=[],
-        risk_evidence=[],
-        unknowns=["indicator layer not wired yet"],
-        data_warnings=[],
-        basic_context=BasicContext(industry=payload.industry, company_summary=payload.company_summary),
-        disclaimer="This report is educational only and is not investment advice.",
-    )
+    result = summarize_signals(payload.stock_code, payload.company_name, payload.daily_history)
+    result.basic_context = BasicContext(industry=payload.industry, company_summary=payload.company_summary)
     markdown = render_markdown(result)
     return result, markdown
