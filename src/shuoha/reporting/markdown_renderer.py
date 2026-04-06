@@ -72,6 +72,20 @@ def _summary_sentence(result: AnalysisResult, verdict_label: str, confidence_lab
     return f"截至 `{result.as_of_date}`，这只股票当前更适合 `{verdict_label}`，判断置信度为 `{confidence_label}`。核心原因通常不是没有机会，而是下行风险和不确定性对新手不友好。"
 
 
+def _bias_explainer(result: AnalysisResult) -> str:
+    if result.verdict is None:
+        return "现在连主结论都不完整，更别谈什么偏多偏空，先把数据补齐。"
+    if result.verdict.value == "wait" and result.bias.value == "bullish":
+        return "这里的偏多不代表现在就能买，只代表利多略多于利空，但还没多到足以替你解决买点问题。"
+    if result.verdict.value == "wait" and result.bias.value == "bearish":
+        return "这里的偏空不代表马上会暴跌，只代表利空和不确定性已经开始压过利多。"
+    if result.verdict.value == "consider" and result.bias.value == "bullish":
+        return "这里的偏强也不是让你重仓冲进去，只代表证据链比普通“可以关注”更扎实一些。"
+    if result.verdict.value == "avoid_for_now" and result.bias.value == "bearish":
+        return "这里的偏空是在提醒你，当前风险不是抽象存在，而是已经明显压住了上行理由。"
+    return "先看主结论，再看偏向。偏向只是告诉你证据往哪边稍微倾斜，不是替你自动下单。"
+
+
 def _scorecard(result: AnalysisResult) -> str:
     evidence = result.technical_evidence + result.risk_evidence
     positives = sum(item.signal.value == "positive" for item in evidence)
@@ -272,6 +286,8 @@ def render_markdown(result: AnalysisResult) -> str:
 结论：`{label}`
 
 {_summary_sentence(result, label, confidence)}
+
+{_bias_explainer(result)}
 
 ## 锐评
 {_sharp_review(result)}
