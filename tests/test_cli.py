@@ -55,7 +55,7 @@ def test_analyze_prints_elevator_summary_before_output_paths(monkeypatch, tmp_pa
 
     assert result.exit_code == 0
     assert "电梯摘要" in result.stdout
-    assert "结论：观望-偏多" in result.stdout
+    assert "[结论] 观望-偏多" in result.stdout
     assert "已生成" in result.stdout
 
 
@@ -89,6 +89,7 @@ def test_analyze_full_prints_markdown_report_to_terminal(monkeypatch, tmp_path):
     result = runner.invoke(app, ["analyze", "600519", "--full"])
 
     assert result.exit_code == 0
-    assert "# 贵州茅台" in result.stdout
-    assert "## 快速结论" in result.stdout
+    assert "股票报告 | 贵州茅台" in result.stdout
+    assert "[快速结论]" in result.stdout
+    assert "## 快速结论" not in result.stdout
     assert "已生成" in result.stdout
