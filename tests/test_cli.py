@@ -15,3 +15,10 @@ def test_cli_requires_stock_code_format():
     result = runner.invoke(app, ["analyze", "abc"])
     assert result.exit_code == 2
     assert "Stock code must be 6 digits" in result.stdout
+
+
+def test_help_mentions_agent_flag():
+    runner = CliRunner()
+    result = runner.invoke(app, ["analyze", "--help"])
+    assert result.exit_code == 0
+    assert "--agent" in result.stdout

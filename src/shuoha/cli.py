@@ -16,11 +16,11 @@ def main() -> None:
 
 
 @app.command()
-def analyze(stock_code: str, output_dir: Path | None = None) -> None:
+def analyze(stock_code: str, output_dir: Path | None = None, agent: bool = False) -> None:
     if not (stock_code.isdigit() and len(stock_code) == 6):
         typer.echo("Stock code must be 6 digits")
         raise typer.Exit(2)
-    result, markdown = run_analysis(stock_code)
+    result, markdown = run_analysis(stock_code, agent=agent)
     evidence_path, report_path = write_outputs(result, markdown, output_dir or default_output_dir(stock_code))
     print(f"[green]Saved[/green] {report_path}")
     print(f"[green]Saved[/green] {evidence_path}")

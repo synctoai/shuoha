@@ -1,5 +1,8 @@
+import os
+
 from shuoha.data.providers.akshare_provider import AKShareProvider
 from shuoha.indicators import annualized_volatility, max_drawdown, simple_moving_average
+from shuoha.reporting.agent_renderer import render_agent_markdown
 from shuoha.reporting.markdown_renderer import render_markdown
 from shuoha.rules import choose_verdict
 from shuoha.schemas import (
@@ -66,10 +69,10 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
     )
 
 
-def run_analysis(stock_code: str):
+def run_analysis(stock_code: str, *, agent: bool = False):
     provider = AKShareProvider()
     payload = provider.fetch(stock_code)
     result = summarize_signals(payload.stock_code, payload.company_name, payload.daily_history)
     result.basic_context = BasicContext(industry=payload.industry, company_summary=payload.company_summary)
-    markdown = render_markdown(result)
+    markdown = render_agent_markdown(result) if agent and os.environ.get("OPENAI_API_KEY") else render_markdown(result)
     return result, markdown
