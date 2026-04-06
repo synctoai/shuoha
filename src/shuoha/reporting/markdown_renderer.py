@@ -56,6 +56,31 @@ def _summary_sentence(result: AnalysisResult, verdict_label: str, confidence_lab
     return f"截至 `{result.as_of_date}`，这只股票当前更适合 `{verdict_label}`，判断置信度为 `{confidence_label}`。核心原因通常不是没有机会，而是下行风险和不确定性对新手不友好。"
 
 
+def _scorecard(result: AnalysisResult) -> str:
+    evidence = result.technical_evidence + result.risk_evidence
+    positives = sum(item.signal.value == "positive" for item in evidence)
+    negatives = sum(item.signal.value == "negative" for item in evidence)
+    neutrals = sum(item.signal.value == "neutral" for item in evidence)
+    score = positives - negatives
+    if result.verdict is None:
+        verdict_line = "- 当前没有足够完整的证据链，先别把这份报告当成判决书。"
+    elif score >= 2 and negatives == 0:
+        verdict_line = "- 账面上偏多，但还得看这些利多是不是继续被量能和价格兑现。"
+    elif negatives >= positives:
+        verdict_line = "- 利空和不确定性没有输给利多，所以这票现在更适合保守看待。"
+    else:
+        verdict_line = "- 利多不是没有，但还没多到可以压过风险和犹豫。"
+    return "\n".join(
+        [
+            f"- 利多：`{positives}` 条",
+            f"- 利空：`{negatives}` 条",
+            f"- 中性：`{neutrals}` 条",
+            f"- 证据总分：`{score}`",
+            verdict_line,
+        ]
+    )
+
+
 def _suitability_text(result: AnalysisResult) -> str:
     if result.verdict is None:
         return "- 更适合先观察数据是否恢复正常的人。\n- 不适合在信息不完整时立刻做交易决定。"
@@ -234,6 +259,9 @@ def render_markdown(result: AnalysisResult) -> str:
 
 ## 锐评
 {_sharp_review(result)}
+
+## 证据判决书
+{_scorecard(result)}
 
 ## 这家公司是做什么的
 - 行业：{industry}
