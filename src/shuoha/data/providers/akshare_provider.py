@@ -6,7 +6,7 @@ from shuoha.data.providers.base import ProviderPayload
 def normalize_daily_history(rows: list[dict]) -> list[dict]:
     normalized = [
         {
-            "date": row["日期"],
+            "date": str(row["日期"]),
             "open": float(row["开盘"]),
             "high": float(row["最高"]),
             "low": float(row["最低"]),
@@ -31,5 +31,5 @@ class AKShareProvider:
             industry=None,
             company_summary=f"A-share company {stock_code}",
             daily_history=daily_history,
-            as_of_date=daily_history[-1]["date"],
+            as_of_date=str(daily_history[-1]["date"]),
         )

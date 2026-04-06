@@ -71,7 +71,26 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
 
 def run_analysis(stock_code: str, *, agent: bool = False):
     provider = AKShareProvider()
-    payload = provider.fetch(stock_code)
+    try:
+        payload = provider.fetch(stock_code)
+    except Exception as exc:
+        result = AnalysisResult(
+            status=AnalysisStatus.PARTIAL,
+            stock_code=stock_code,
+            company_name=stock_code,
+            as_of_date="unknown",
+            verdict=None,
+            confidence=Confidence.LOW,
+            technical_evidence=[],
+            risk_evidence=[],
+            unknowns=["provider fetch failed"],
+            data_warnings=[str(exc)],
+            basic_context=BasicContext(industry=None, company_summary="No company summary available."),
+            disclaimer="This report is educational only and is not investment advice.",
+        )
+        markdown = render_markdown(result)
+        return result, markdown
+
     result = summarize_signals(payload.stock_code, payload.company_name, payload.daily_history)
     result.basic_context = BasicContext(industry=payload.industry, company_summary=payload.company_summary)
     markdown = render_agent_markdown(result) if agent and os.environ.get("OPENAI_API_KEY") else render_markdown(result)

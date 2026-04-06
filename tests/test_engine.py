@@ -1,4 +1,5 @@
-from shuoha.engine import summarize_signals
+from shuoha.data.providers.base import ProviderPayload
+from shuoha.engine import run_analysis, summarize_signals
 from shuoha.schemas import AnalysisResult, Verdict
 
 
@@ -36,3 +37,15 @@ def test_summarize_signals_yields_wait_for_mixed_signals():
     ] * 20
     result = summarize_signals("600519", "贵州茅台", rows)
     assert result.verdict.value == "wait"
+
+
+def test_run_analysis_returns_partial_when_provider_fails(monkeypatch):
+    def _boom(self, stock_code: str):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr("shuoha.engine.AKShareProvider.fetch", _boom)
+    result, markdown = run_analysis("600519")
+    assert result.status.value == "partial"
+    assert result.verdict is None
+    assert "network down" in result.data_warnings[0]
+    assert "No verdict" in markdown
