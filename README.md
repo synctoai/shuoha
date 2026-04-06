@@ -1,7 +1,18 @@
 # shuoha
 
+![version](https://img.shields.io/badge/version-0.1.0-blue)
+![status](https://img.shields.io/badge/status-mvp-orange)
+![license](https://img.shields.io/badge/license-MIT-green)
+
 `shuoha` 是一个面向投资小白的 A 股分析 CLI。  
 你输入一个 6 位股票代码，它会输出一份中文研究报告，先给结论，再解释理由、风险、观察点和新手最容易犯的错。
+
+仓库文档：
+
+- [README.md](/Users/leeeeeee/code/shuoha/README.md)
+- [CONTRIBUTING.md](/Users/leeeeeee/code/shuoha/CONTRIBUTING.md)
+- [CHANGELOG.md](/Users/leeeeeee/code/shuoha/CHANGELOG.md)
+- [LICENSE](/Users/leeeeeee/code/shuoha/LICENSE)
 
 当前主入口：
 
@@ -194,6 +205,18 @@ uv run shuoha analyze 600519 --agent
 
 `shuoha` 不是投顾，不提供投资建议。  
 它的目标是帮助新手“看懂一只股票现在大概是什么状态”，不是替你做交易决策。
+
+### 项目状态
+
+当前项目状态是 `MVP`。
+
+这代表：
+
+- 主链路已经可用
+- 文档、测试、产物格式已经成型
+- 适合继续迭代，不适合宣称“生产级投顾系统”
+
+当前包版本见 [pyproject.toml](/Users/leeeeeee/code/shuoha/pyproject.toml) 中的 `0.1.0`，变更记录见 [CHANGELOG.md](/Users/leeeeeee/code/shuoha/CHANGELOG.md)。
 
 ## 面向技术
 
@@ -391,6 +414,23 @@ uv run shuoha analyze 600519 --full
 - watch/thesis 持久化跟踪
 - 多角色输出，例如 `newbie / manager`
 - 真正的 agent orchestration，而不是单纯改写层
+
+## 版本与发布
+
+当前版本策略：
+
+- `MAJOR`
+  - 不兼容的 CLI 或 schema 变更
+- `MINOR`
+  - 新功能、新输出段落、新 provider 能力
+- `PATCH`
+  - bugfix、文案修正、稳定性修复
+
+建议发布前至少确认：
+
+- `uv run --extra dev pytest -v`
+- `uv run shuoha analyze 600519`
+- README / CHANGELOG / CLI 帮助文本已同步
 
 ## 一句话总结
 
