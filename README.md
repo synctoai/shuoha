@@ -108,6 +108,41 @@ uv run shuoha analyze 600519 --output-dir ./tmp/600519
 - `这份报告最可能看错的地方`
 - `指标翻译`
 
+### 示例输出
+
+默认摘要模式大概长这样：
+
+```text
+================ 电梯摘要 ================
+[结论] 观望
+[最大理由] 价格站在 20 日和 60 日均线之上，短中期趋势暂时偏强。
+[最大风险] 距离高点回撤较深，需要更谨慎。
+[下一步] 如果后续量能明显改善，而且价格还能继续站稳关键均线，上涨态度才更像是真的。
+======================================
+已生成 out/600519/report.md
+已生成 out/600519/evidence.json
+```
+
+`--full` 模式会把完整报告直接打印到终端，风格更接近“终端研究卡片”：
+
+```text
+================ 股票报告 | 贵州茅台（600519） ================
+
+[快速结论]
+结论：观望
+
+[锐评]
+趋势和动量看着不丑，但量能没跟上，你现在冲进去，更像是在替别人接情绪。
+
+[证据判决书]
+- 利多：2 条
+- 利空：1 条
+- 中性：3 条
+- 证据总分：1
+```
+
+完整长文仍然会写入 `out/<stock_code>/report.md`，终端只是便于快速扫读。
+
 ### `evidence.json` 是干什么的
 
 `report.md` 给人看，`evidence.json` 给机器看。
@@ -198,6 +233,35 @@ uv run shuoha analyze 600519 --agent
 - LLM 可以润色表达，但不能替代底层证据
 - verdict 必须来自确定性规则，而不是 prompt 幻觉
 - CLI 默认优先服务投资小白，而不是专业交易员
+
+### 数据流图
+
+```mermaid
+flowchart LR
+    A[用户输入股票代码] --> B[Typer CLI]
+    B --> C[AKShareProvider]
+    C --> D[历史行情]
+    C --> E[公司资料]
+    D --> F[指标计算层]
+    E --> G[基础信息补全]
+    F --> H[规则层]
+    G --> H
+    H --> I[AnalysisResult]
+    I --> J[Markdown Renderer]
+    I --> K[Terminal Renderer]
+    I --> L[Agent Renderer 可选]
+    J --> M[report.md]
+    I --> N[evidence.json]
+    K --> O[brief/full 终端输出]
+    L --> M
+```
+
+读图方式：
+
+- 左边是输入和数据源
+- 中间是 deterministic 分析主链路
+- 右边是给人看的终端/Markdown 输出，以及给机器用的 `evidence.json`
+- `Agent Renderer` 是可选分支，不是主判决引擎
 
 ### 数据来源和缓存策略
 
