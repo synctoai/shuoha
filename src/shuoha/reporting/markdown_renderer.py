@@ -51,6 +51,20 @@ def _verdict_label(result: AnalysisResult) -> str:
     return VERDICT_LABELS.get(result.verdict.value, "当前无法给出结论")
 
 
+def _top_positive(result: AnalysisResult) -> str:
+    for item in result.technical_evidence + result.risk_evidence:
+        if item.signal.value == "positive":
+            return item.plain_text
+    return "当前没有足够强的正向证据。"
+
+
+def _top_risk(result: AnalysisResult) -> str:
+    for item in result.risk_evidence + result.technical_evidence:
+        if item.signal.value == "negative":
+            return item.plain_text
+    return "当前没有特别突出的单点风险。"
+
+
 def _join_or_default(lines: list[str], default: str) -> str:
     return "\n".join(lines) if lines else default
 
@@ -276,6 +290,21 @@ def _indicator_glossary() -> str:
     )
 
 
+def render_elevator_summary(result: AnalysisResult) -> str:
+    label = _verdict_label(result)
+    watch_points = _watch_points(result).splitlines()
+    next_step = watch_points[0].removeprefix("- ").strip() if watch_points else "先继续观察，不要急着下单。"
+    return "\n".join(
+        [
+            "电梯摘要",
+            f"结论：{label}",
+            f"最大理由：{_top_positive(result)}",
+            f"最大风险：{_top_risk(result)}",
+            f"下一步：{next_step}",
+        ]
+    )
+
+
 def render_markdown(result: AnalysisResult) -> str:
     label = _verdict_label(result)
     confidence = CONFIDENCE_LABELS.get(result.confidence.value, result.confidence.value)
@@ -297,6 +326,12 @@ def render_markdown(result: AnalysisResult) -> str:
     company_summary = result.basic_context.company_summary if result.basic_context else "暂时没有拿到公司简介。"
     industry = result.basic_context.industry if result.basic_context and result.basic_context.industry else "未识别"
     return f"""# {result.company_name}（`{result.stock_code}`）
+
+## 电梯摘要
+- 结论：`{label}`
+- 最大理由：{_top_positive(result)}
+- 最大风险：{_top_risk(result)}
+- 下一步：{_watch_points(result).splitlines()[0].removeprefix("- ").strip() if _watch_points(result).splitlines() else "先继续观察，不要急着下单。"}
 
 ## 快速结论
 结论：`{label}`

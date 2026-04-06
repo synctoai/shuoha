@@ -30,6 +30,7 @@ def test_render_markdown_contains_quick_conclusion():
         disclaimer="本报告仅供学习交流，不构成投资建议。",
     )
     markdown = render_markdown(result)
+    assert "## 电梯摘要" in markdown
     assert "## 快速结论" in markdown
     assert "结论：`观望-偏多`" in markdown
     assert "偏多不代表现在就能买" in markdown
