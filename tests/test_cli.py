@@ -5,7 +5,16 @@ from typer.testing import CliRunner
 from shuoha.cli import app
 from shuoha.config import codex_report_filename, default_codex_output_dir
 from shuoha.external_cli import ExternalCliError
-from shuoha.schemas import AnalysisResult, AnalysisStatus, BasicContext, Confidence, Verdict, VerdictBias
+from shuoha.schemas import (
+    AnalysisResult,
+    AnalysisStatus,
+    BasicContext,
+    Confidence,
+    RiskProfile,
+    TrendSnapshot,
+    Verdict,
+    VerdictBias,
+)
 
 
 def test_help_smoke():
@@ -54,11 +63,65 @@ def test_cli_backend_rejects_unknown_value():
     assert "codex" in result.stderr
 
 
-def test_local_cli_rejects_multiple_stock_codes():
+def test_local_cli_accepts_multiple_stock_codes_with_portfolio_summary(monkeypatch, tmp_path):
+    def fake_result(stock_code):
+        verdict = Verdict.CONSIDER if stock_code == "600519" else Verdict.WAIT
+        return AnalysisResult(
+            status=AnalysisStatus.OK,
+            stock_code=stock_code,
+            company_name=stock_code,
+            as_of_date="2026-05-17",
+            verdict=verdict,
+            bias=VerdictBias.NEUTRAL,
+            confidence=Confidence.MEDIUM,
+            technical_evidence=[],
+            risk_evidence=[],
+            unknowns=[],
+            data_warnings=[],
+            trend_snapshot=TrendSnapshot(
+                current_price=10.0,
+                ma5=9.8,
+                ma10=9.6,
+                ma20=9.4,
+                ma60=9.0,
+                bias_ma5=2.0,
+                support_level=9.3,
+                resistance_level=10.5,
+                volume_ratio=1.2,
+                trend_score=86 if stock_code == "600519" else 72,
+                ma_alignment="bullish",
+            ),
+            risk_profile=RiskProfile(
+                risk_level="low",
+                risk_score=18 if stock_code == "600519" else 35,
+                hard_veto=False,
+                chase_risk=False,
+                volatility=0.18,
+                max_drawdown=0.12,
+                reasons=[],
+            ),
+            basic_context=BasicContext(industry="测试", company_summary="测试公司。"),
+            disclaimer="本报告仅供学习交流，不构成投资建议。",
+        )
+
+    monkeypatch.setattr("shuoha.cli.run_analysis", lambda stock_code, agent=False: (fake_result(stock_code), "# report"))
+    monkeypatch.setattr(
+        "shuoha.cli.write_outputs",
+        lambda result, report_markdown, output_dir: (
+            tmp_path / result.stock_code / "evidence.json",
+            tmp_path / result.stock_code / "report.md",
+        ),
+    )
+
     runner = CliRunner()
     result = runner.invoke(app, ["analyze", "600519", "000657", "--cli", "local"])
-    assert result.exit_code == 2
-    assert "多股票分析目前请使用 --cli codex" in result.stdout
+
+    assert result.exit_code == 0
+    assert "候选池" in result.stdout
+    assert "观察池" in result.stdout
+    assert "600519" in result.stdout
+    assert "000657" in result.stdout
+    assert "已生成" in result.stdout
 
 
 def test_codex_cli_accepts_multiple_stock_codes(monkeypatch, tmp_path):

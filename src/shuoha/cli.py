@@ -9,6 +9,7 @@ from shuoha.codex_analysis import run_codex_analysis
 from shuoha.config import codex_report_filename, default_codex_output_dir, default_output_dir
 from shuoha.engine import run_analysis
 from shuoha.external_cli import ExternalCliError
+from shuoha.portfolio import rank_analysis_results, render_portfolio_summary
 from shuoha.reporting.output import write_markdown_report, write_outputs
 from shuoha.reporting.terminal_renderer import render_terminal_report, render_terminal_summary
 
@@ -18,7 +19,7 @@ ROOT_EPILOG = """常用示例：
   shuoha analyze 600519 --full
   shuoha analyze 000657 600105 --cli codex
 """
-ANALYZE_HELP = "分析 A 股股票。默认使用本地确定性分析；需要多股票深度研究时使用 --cli codex。"
+ANALYZE_HELP = "分析 A 股股票。默认使用本地确定性分析；多股票 local 会输出本地排序，codex 会做深度研究。"
 ANALYZE_EPILOG = """示例：
   shuoha analyze 600519
   shuoha analyze 600519 --brief
@@ -27,7 +28,7 @@ ANALYZE_EPILOG = """示例：
   shuoha analyze 000657 600105 --cli codex
 
 说明：
-  local 模式只支持单只股票。
+  local 模式支持多股票，会输出候选池、观察池、回避池。
   codex 模式支持多股票，会复用本地 AKShare 和指标结果，再调用本机 Codex CLI 生成深度报告。
   codex 默认保存为 out/codex/<股票代码>-<日期>.md。
 """
@@ -50,7 +51,7 @@ def main() -> None:
 def analyze(
     stock_codes: Annotated[
         list[str],
-        typer.Argument(help="6 位 A 股股票代码。local 模式只支持 1 只，多股票请使用 --cli codex。"),
+        typer.Argument(help="6 位 A 股股票代码。local 支持本地多股票排序，codex 支持多股票深度研究。"),
     ],
     output_dir: Annotated[
         Path | None,
@@ -93,9 +94,19 @@ def analyze(
         )
         print(f"[green]已生成[/green] {report_path}")
         return
-    if len(stock_codes) != 1:
-        typer.echo("多股票分析目前请使用 --cli codex")
-        raise typer.Exit(2)
+    if len(stock_codes) > 1:
+        results = []
+        outputs = []
+        for stock_code in stock_codes:
+            result, markdown = run_analysis(stock_code, agent=agent)
+            results.append(result)
+            outputs.append((result, markdown))
+        print(render_portfolio_summary(rank_analysis_results(results)))
+        for result, markdown in outputs:
+            evidence_path, report_path = write_outputs(result, markdown, output_dir or default_output_dir(result.stock_code))
+            print(f"[green]已生成[/green] {report_path}")
+            print(f"[green]已生成[/green] {evidence_path}")
+        return
     stock_code = stock_codes[0]
     result, markdown = run_analysis(stock_code, agent=agent)
     if full:
