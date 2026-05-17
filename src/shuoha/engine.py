@@ -497,6 +497,8 @@ def run_analysis(stock_code: str, *, agent: bool = False):
         payload.company_name,
         payload.daily_history,
         event_risks=payload.event_risks,
+        capital_flow=payload.capital_flow,
+        fundamentals=payload.fundamentals,
     )
     result.basic_context = BasicContext(industry=payload.industry, company_summary=payload.company_summary)
 

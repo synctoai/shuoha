@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from shuoha.schemas import EventRisk
+from shuoha.schemas import CapitalFlowSnapshot, EventRisk, FundamentalSnapshot
 
 
 @dataclass
@@ -13,6 +13,8 @@ class ProviderPayload:
     daily_history: list[dict]
     as_of_date: str
     event_risks: list[EventRisk] = field(default_factory=list)
+    capital_flow: CapitalFlowSnapshot | None = None
+    fundamentals: FundamentalSnapshot | None = None
 
 
 class StockDataProvider(Protocol):

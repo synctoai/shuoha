@@ -278,6 +278,20 @@ def test_run_analysis_falls_back_to_local_renderer_when_agent_path_unavailable(m
                 summary="减持计划可能压制短期风险偏好。",
             )
         ],
+        capital_flow=CapitalFlowSnapshot(
+            main_net_inflow=-120000000.0,
+            main_net_inflow_rate=-8.5,
+            retail_net_inflow=90000000.0,
+            source="eastmoney_fund_flow",
+        ),
+        fundamentals=FundamentalSnapshot(
+            pe_ttm=96.0,
+            pb=None,
+            roe=None,
+            revenue_growth=None,
+            profit_growth=-35.0,
+            source="eastmoney_financial",
+        ),
     )
 
     monkeypatch.setattr("shuoha.engine.AKShareProvider.fetch", lambda self, stock_code: payload)
@@ -294,3 +308,5 @@ def test_run_analysis_falls_back_to_local_renderer_when_agent_path_unavailable(m
     assert any("LLM 改写不可用" in warning for warning in result.data_warnings)
     assert result.news_risk_profile is not None
     assert result.news_risk_profile.hard_veto is True
+    assert result.capital_flow is not None
+    assert result.fundamentals is not None

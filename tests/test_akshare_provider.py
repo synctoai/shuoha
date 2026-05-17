@@ -4,7 +4,13 @@ import time
 import pandas as pd
 import pytest
 
-from shuoha.data.providers.akshare_provider import AKShareProvider, normalize_daily_history, normalize_event_risks
+from shuoha.data.providers.akshare_provider import (
+    AKShareProvider,
+    normalize_capital_flow,
+    normalize_daily_history,
+    normalize_event_risks,
+    normalize_fundamentals,
+)
 from shuoha.schemas import EventSeverity
 
 
@@ -12,6 +18,14 @@ from shuoha.schemas import EventSeverity
 def _no_remote_event_risk_lookup(monkeypatch):
     monkeypatch.setattr(
         "shuoha.data.providers.akshare_provider.ak.stock_notice_report",
+        lambda **kwargs: pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        "shuoha.data.providers.akshare_provider.ak.stock_individual_fund_flow",
+        lambda **kwargs: pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        "shuoha.data.providers.akshare_provider.ak.stock_individual_info_em",
         lambda **kwargs: pd.DataFrame(),
     )
 
@@ -64,6 +78,41 @@ def test_normalize_event_risks_flags_announcement_keywords():
     assert risks[0].source == "eastmoney_notice"
 
 
+def test_normalize_capital_flow_uses_latest_main_flow_row():
+    snapshot = normalize_capital_flow(
+        [
+            {"日期": "2026-04-01", "主力净流入-净额": "-1.20亿", "主力净流入-净占比": "-8.5%", "小单净流入-净额": "9000万"},
+            {"日期": "2026-04-02", "主力净流入-净额": "2.50亿", "主力净流入-净占比": "6.2%", "小单净流入-净额": "-3000万"},
+        ]
+    )
+
+    assert snapshot is not None
+    assert snapshot.main_net_inflow == 250000000.0
+    assert snapshot.main_net_inflow_rate == 6.2
+    assert snapshot.retail_net_inflow == -30000000.0
+    assert snapshot.source == "eastmoney_fund_flow"
+
+
+def test_normalize_fundamentals_reads_key_value_rows():
+    snapshot = normalize_fundamentals(
+        [
+            {"item": "市盈率(TTM)", "value": "96.0"},
+            {"item": "市净率", "value": "8.5"},
+            {"item": "ROE", "value": "7.0%"},
+            {"item": "营业收入同比增长率", "value": "-12.0%"},
+            {"item": "净利润同比增长率", "value": "-35.0%"},
+        ]
+    )
+
+    assert snapshot is not None
+    assert snapshot.pe_ttm == 96.0
+    assert snapshot.pb == 8.5
+    assert snapshot.roe == 7.0
+    assert snapshot.revenue_growth == -12.0
+    assert snapshot.profit_growth == -35.0
+    assert snapshot.source == "eastmoney_financial"
+
+
 def test_provider_fetch_includes_structured_event_risks(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "shuoha.data.providers.akshare_provider.ak.stock_zh_a_hist",
@@ -112,6 +161,67 @@ def test_provider_fetch_includes_structured_event_risks(monkeypatch, tmp_path):
     assert len(payload.event_risks) == 1
     assert payload.event_risks[0].event_type == "earnings_warning"
     assert payload.event_risks[0].severity == EventSeverity.BLOCKER
+
+
+def test_provider_fetch_includes_capital_flow_and_fundamentals(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "shuoha.data.providers.akshare_provider.ak.stock_zh_a_hist",
+        lambda **kwargs: pd.DataFrame(
+            [
+                {
+                    "日期": "2026-04-01",
+                    "开盘": 9.0,
+                    "最高": 11.0,
+                    "最低": 8.0,
+                    "收盘": 10.0,
+                    "成交量": 1234.0,
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        "shuoha.data.providers.akshare_provider.ak.stock_profile_cninfo",
+        lambda **kwargs: pd.DataFrame(
+            [
+                {
+                    "公司名称": "贵州茅台酒股份有限公司",
+                    "A股简称": "贵州茅台",
+                    "所属行业": "酒、饮料和精制茶制造业",
+                    "主营业务": "贵州茅台酒系列产品。",
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        "shuoha.data.providers.akshare_provider.ak.stock_individual_fund_flow",
+        lambda **kwargs: pd.DataFrame(
+            [
+                {
+                    "日期": "2026-04-02",
+                    "主力净流入-净额": "-1.20亿",
+                    "主力净流入-净占比": "-8.5%",
+                    "小单净流入-净额": "9000万",
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        "shuoha.data.providers.akshare_provider.ak.stock_individual_info_em",
+        lambda **kwargs: pd.DataFrame(
+            [
+                {"item": "市盈率(TTM)", "value": "96.0"},
+                {"item": "净利润同比增长率", "value": "-35.0%"},
+            ]
+        ),
+    )
+
+    payload = AKShareProvider(cache_dir=tmp_path).fetch("600519")
+
+    assert payload.capital_flow is not None
+    assert payload.capital_flow.main_net_inflow_rate == -8.5
+    assert payload.fundamentals is not None
+    assert payload.fundamentals.pe_ttm == 96.0
+    assert payload.fundamentals.profit_growth == -35.0
 
 
 def test_provider_falls_back_to_tx_when_eastmoney_fails(monkeypatch, tmp_path):

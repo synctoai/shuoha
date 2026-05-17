@@ -8,11 +8,15 @@ import akshare as ak
 
 from shuoha.config import default_cache_dir
 from shuoha.data.providers.base import ProviderPayload
-from shuoha.schemas import EventRisk, EventSeverity
+from shuoha.schemas import CapitalFlowSnapshot, EventRisk, EventSeverity, FundamentalSnapshot
 
 
 def to_tx_symbol(stock_code: str) -> str:
     return f"sh{stock_code}" if stock_code.startswith("6") else f"sz{stock_code}"
+
+
+def to_market(stock_code: str) -> str:
+    return "sh" if stock_code.startswith("6") else "sz"
 
 
 def tx_history_window(today: date | None = None, lookback_days: int = 730) -> tuple[str, str]:
@@ -82,6 +86,29 @@ def _row_stock_code(row: dict) -> str:
     return digits[-6:] if len(digits) >= 6 else digits
 
 
+def _parse_number(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    text = str(value).strip().replace(",", "")
+    if not text or text.lower() in {"nan", "none", "--", "-"}:
+        return None
+    multiplier = 1.0
+    if text.endswith("%"):
+        text = text[:-1]
+    if text.endswith("亿"):
+        multiplier = 100000000.0
+        text = text[:-1]
+    elif text.endswith("万"):
+        multiplier = 10000.0
+        text = text[:-1]
+    try:
+        return float(text) * multiplier
+    except ValueError:
+        return None
+
+
 def _classify_event(title: str) -> tuple[str, EventSeverity] | None:
     rules = [
         ("regulatory_penalty", EventSeverity.BLOCKER, ("监管处罚", "处罚", "立案", "调查")),
@@ -126,6 +153,76 @@ def normalize_event_risks(rows: list[dict], stock_code: str) -> list[EventRisk]:
             )
         )
     return risks[:10]
+
+
+def normalize_capital_flow(rows: list[dict]) -> CapitalFlowSnapshot | None:
+    if not rows:
+        return None
+    latest_row = sorted(rows, key=lambda row: _row_text(row, "日期", "date"))[-1]
+    main_net_inflow = _parse_number(
+        latest_row.get("主力净流入-净额")
+        or latest_row.get("主力净流入净额")
+        or latest_row.get("主力净额")
+    )
+    main_net_inflow_rate = _parse_number(
+        latest_row.get("主力净流入-净占比")
+        or latest_row.get("主力净流入净占比")
+        or latest_row.get("主力净占比")
+    )
+    if main_net_inflow is None or main_net_inflow_rate is None:
+        return None
+    retail_net_inflow = _parse_number(
+        latest_row.get("小单净流入-净额")
+        or latest_row.get("散户净流入")
+        or latest_row.get("小单净额")
+    )
+    return CapitalFlowSnapshot(
+        main_net_inflow=main_net_inflow,
+        main_net_inflow_rate=main_net_inflow_rate,
+        retail_net_inflow=retail_net_inflow,
+        source="eastmoney_fund_flow",
+    )
+
+
+def _metric_from_pairs(pairs: dict[str, object], *keywords: str) -> float | None:
+    for key, value in pairs.items():
+        if all(keyword in key for keyword in keywords):
+            return _parse_number(value)
+    return None
+
+
+def normalize_fundamentals(rows: list[dict]) -> FundamentalSnapshot | None:
+    if not rows:
+        return None
+    pairs: dict[str, object] = {}
+    for row in rows:
+        key = _row_text(row, "item", "项目", "指标", "name")
+        value = row.get("value", row.get("值", row.get("数值")))
+        if key and value is not None:
+            pairs[key] = value
+    if not pairs:
+        row = rows[-1]
+        pairs = {str(key): value for key, value in row.items()}
+    snapshot = FundamentalSnapshot(
+        pe_ttm=_metric_from_pairs(pairs, "市盈率", "TTM") or _metric_from_pairs(pairs, "PE", "TTM"),
+        pb=_metric_from_pairs(pairs, "市净率") or _metric_from_pairs(pairs, "PB"),
+        roe=_metric_from_pairs(pairs, "ROE") or _metric_from_pairs(pairs, "净资产收益率"),
+        revenue_growth=_metric_from_pairs(pairs, "营业收入", "增长"),
+        profit_growth=_metric_from_pairs(pairs, "净利润", "增长"),
+        source="eastmoney_financial",
+    )
+    if all(
+        value is None
+        for value in (
+            snapshot.pe_ttm,
+            snapshot.pb,
+            snapshot.roe,
+            snapshot.revenue_growth,
+            snapshot.profit_growth,
+        )
+    ):
+        return None
+    return snapshot
 
 
 class AKShareProvider:
@@ -205,14 +302,50 @@ class AKShareProvider:
         self._write_cache("event_risks", stock_code, [event.model_dump(mode="json") for event in event_risks])
         return event_risks
 
+    def _fetch_capital_flow_remote(self, stock_code: str) -> CapitalFlowSnapshot | None:
+        try:
+            flow = ak.stock_individual_fund_flow(stock=stock_code, market=to_market(stock_code))
+            return normalize_capital_flow(flow.to_dict(orient="records"))
+        except Exception:
+            return None
+
+    def _fetch_capital_flow(self, stock_code: str) -> CapitalFlowSnapshot | None:
+        cached = self._read_cache("capital_flow", stock_code)
+        if cached:
+            return CapitalFlowSnapshot.model_validate(cached)
+        capital_flow = self._fetch_capital_flow_remote(stock_code)
+        if capital_flow is not None:
+            self._write_cache("capital_flow", stock_code, capital_flow.model_dump(mode="json"))
+        return capital_flow
+
+    def _fetch_fundamentals_remote(self, stock_code: str) -> FundamentalSnapshot | None:
+        try:
+            info = ak.stock_individual_info_em(symbol=stock_code)
+            return normalize_fundamentals(info.to_dict(orient="records"))
+        except Exception:
+            return None
+
+    def _fetch_fundamentals(self, stock_code: str) -> FundamentalSnapshot | None:
+        cached = self._read_cache("fundamentals", stock_code)
+        if cached:
+            return FundamentalSnapshot.model_validate(cached)
+        fundamentals = self._fetch_fundamentals_remote(stock_code)
+        if fundamentals is not None:
+            self._write_cache("fundamentals", stock_code, fundamentals.model_dump(mode="json"))
+        return fundamentals
+
     def fetch(self, stock_code: str) -> ProviderPayload:
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:
             history_future = executor.submit(self._fetch_history, stock_code)
             profile_future = executor.submit(self._fetch_profile, stock_code)
             event_risks_future = executor.submit(self._fetch_event_risks, stock_code)
+            capital_flow_future = executor.submit(self._fetch_capital_flow, stock_code)
+            fundamentals_future = executor.submit(self._fetch_fundamentals, stock_code)
             daily_history = history_future.result()
             profile = profile_future.result()
             event_risks = event_risks_future.result()
+            capital_flow = capital_flow_future.result()
+            fundamentals = fundamentals_future.result()
         return ProviderPayload(
             stock_code=stock_code,
             company_name=profile["company_name"] or stock_code,
@@ -221,4 +354,6 @@ class AKShareProvider:
             daily_history=daily_history,
             as_of_date=str(daily_history[-1]["date"]),
             event_risks=event_risks,
+            capital_flow=capital_flow,
+            fundamentals=fundamentals,
         )
