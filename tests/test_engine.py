@@ -71,6 +71,62 @@ def test_summarize_signals_includes_macd_rsi_and_volume_evidence():
     assert "volume_confirmation" in evidence_names
 
 
+def test_summarize_signals_adds_trade_location_and_trend_structure_evidence():
+    rows = [
+        {
+            "date": f"2026-03-{day:02d}",
+            "close": float(100 + day * 0.2),
+            "volume": 1000.0,
+        }
+        for day in range(1, 31)
+    ]
+    rows += [
+        {
+            "date": f"2026-04-{day:02d}",
+            "close": float(106 + day * 0.25),
+            "volume": 980.0 if day < 30 else 850.0,
+        }
+        for day in range(1, 31)
+    ]
+
+    result = summarize_signals("600519", "贵州茅台", rows)
+
+    evidence_names = {item.name for item in result.technical_evidence + result.risk_evidence}
+    assert "ma_stack" in evidence_names
+    assert "price_bias_ma5" in evidence_names
+    assert "support_resistance" in evidence_names
+    assert "trend_score" in evidence_names
+    assert any("MA5" in item.plain_text and "MA10" in item.plain_text for item in result.technical_evidence)
+
+
+def test_summarize_signals_flags_chase_risk_when_price_is_extended_from_ma5():
+    rows = [
+        {
+            "date": f"2026-03-{day:02d}",
+            "close": 100.0 + day * 0.1,
+            "volume": 1000.0,
+        }
+        for day in range(1, 31)
+    ]
+    rows += [
+        {
+            "date": f"2026-04-{day:02d}",
+            "close": 103.0 + day * 0.1,
+            "volume": 1000.0,
+        }
+        for day in range(1, 30)
+    ]
+    rows.append({"date": "2026-04-30", "close": 125.0, "volume": 3000.0})
+
+    result = summarize_signals("600519", "贵州茅台", rows)
+
+    chase_risk = next(item for item in result.risk_evidence if item.name == "chase_risk")
+    assert chase_risk.signal.value == "negative"
+    assert "乖离率" in chase_risk.plain_text
+    assert "追高" in chase_risk.plain_text
+    assert result.verdict.value != "consider"
+
+
 def test_run_analysis_returns_partial_when_provider_fails(monkeypatch):
     def _boom(self, stock_code: str):
         raise RuntimeError("network down")

@@ -51,6 +51,22 @@ def test_build_codex_prompt_includes_dashboard_requirements_and_stock_context():
     assert "不要编造" in prompt
 
 
+def test_build_codex_prompt_requires_actionable_risk_first_dashboard_contract():
+    prompt = build_codex_prompt([CodexStockContext(stock_code="000657", result=_result())])
+    assert "空仓者" in prompt
+    assert "持仓者" in prompt
+    assert "触发条件" in prompt
+    assert "止损位" in prompt
+    assert "观察点" in prompt
+    assert "减持" in prompt
+    assert "业绩预亏" in prompt
+    assert "监管处罚" in prompt
+    assert "大额解禁" in prompt
+    assert "YYYY-MM-DD" in prompt
+    assert "超出时间窗口" in prompt
+    assert "技术面一致性" in prompt
+
+
 def test_build_codex_prompt_includes_partial_context_warning():
     prompt = build_codex_prompt(
         [

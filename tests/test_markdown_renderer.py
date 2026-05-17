@@ -205,6 +205,44 @@ def test_render_markdown_adds_evidence_scorecard():
     assert "证据总分：`1`" in markdown
 
 
+def test_render_markdown_explains_trade_location_terms_for_beginners():
+    result = AnalysisResult(
+        status=AnalysisStatus.OK,
+        stock_code="600519",
+        company_name="贵州茅台",
+        as_of_date="2026-04-06",
+        verdict=Verdict.WAIT,
+        bias=VerdictBias.NEUTRAL,
+        confidence=Confidence.MEDIUM,
+        technical_evidence=[
+            EvidenceItem(
+                name="price_bias_ma5",
+                signal=EvidenceSignal.NEGATIVE,
+                raw_value="bias_ma5=8.00%",
+                plain_text="股价距离 MA5 的乖离率为 8.00%，已经偏离短线均线，追高风险上升。",
+            ),
+            EvidenceItem(
+                name="support_resistance",
+                signal=EvidenceSignal.NEUTRAL,
+                raw_value="support=1400.00,resistance=1520.00",
+                plain_text="近 20 个交易日观察区间：支撑位约 1400.00，压力位约 1520.00。",
+            ),
+        ],
+        risk_evidence=[],
+        unknowns=[],
+        data_warnings=[],
+        basic_context=BasicContext(industry="白酒", company_summary="主营高端白酒。"),
+        disclaimer="本报告仅供学习交流，不构成投资建议。",
+    )
+
+    markdown = render_markdown(result)
+
+    assert "MA5 乖离率" in markdown
+    assert "支撑位" in markdown
+    assert "压力位" in markdown
+    assert "追高" in markdown
+
+
 def test_render_markdown_adds_counterexample_section():
     result = AnalysisResult(
         status=AnalysisStatus.OK,

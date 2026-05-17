@@ -26,7 +26,11 @@ from shuoha.schemas import (
 
 def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> AnalysisResult:
     closes = [row["close"] for row in rows]
+    highs = [float(row.get("high", row["close"])) for row in rows]
+    lows = [float(row.get("low", row["close"])) for row in rows]
     volumes = [float(row.get("volume", 0.0)) for row in rows]
+    ma5 = simple_moving_average(closes, 5)
+    ma10 = simple_moving_average(closes, 10)
     ma20 = simple_moving_average(closes, 20)
     ma60 = simple_moving_average(closes, 60)
     macd_line, signal_line, macd_histogram = moving_average_convergence_divergence(closes)
@@ -36,8 +40,83 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
     drawdown = max_drawdown(closes)
     latest_close = closes[-1]
     previous_close = closes[-2] if len(closes) >= 2 else closes[-1]
+    bias_ma5 = ((latest_close - ma5) / ma5 * 100) if ma5 else 0.0
+    support_level = min(lows[-20:]) if lows else latest_close
+    resistance_level = max(highs[-20:]) if highs else latest_close
+    ma_stack_signal = (
+        EvidenceSignal.POSITIVE
+        if latest_close > ma5 > ma10 > ma20
+        else EvidenceSignal.NEGATIVE
+        if latest_close < ma5 < ma10 < ma20
+        else EvidenceSignal.NEUTRAL
+    )
+    chase_risk_active = bias_ma5 > 5.0
+    trend_score = 50
+    if ma_stack_signal == EvidenceSignal.POSITIVE:
+        trend_score += 20
+    elif ma_stack_signal == EvidenceSignal.NEGATIVE:
+        trend_score -= 20
+    if 0 <= bias_ma5 <= 2:
+        trend_score += 15
+    elif 2 < bias_ma5 <= 5:
+        trend_score += 5
+    elif chase_risk_active or bias_ma5 < -5:
+        trend_score -= 15
+    if latest_close > previous_close and latest_volume_ratio >= 1.15:
+        trend_score += 10
+    elif latest_close < previous_close and latest_volume_ratio >= 1.15:
+        trend_score -= 10
+    trend_score = max(0, min(100, trend_score))
 
     technical_evidence = [
+        EvidenceItem(
+            name="ma_stack",
+            signal=ma_stack_signal,
+            raw_value=f"close={latest_close:.2f},ma5={ma5:.2f},ma10={ma10:.2f},ma20={ma20:.2f},ma60={ma60:.2f}",
+            plain_text=(
+                "价格站在 MA5、MA10、MA20 之上，短线结构呈多头排列。"
+                if ma_stack_signal == EvidenceSignal.POSITIVE
+                else "价格跌到 MA5、MA10、MA20 之下，短线结构偏空。"
+                if ma_stack_signal == EvidenceSignal.NEGATIVE
+                else "MA5、MA10、MA20 还没有形成清晰顺势结构。"
+            ),
+        ),
+        EvidenceItem(
+            name="price_bias_ma5",
+            signal=(
+                EvidenceSignal.POSITIVE
+                if 0 <= bias_ma5 <= 2
+                else EvidenceSignal.NEGATIVE
+                if chase_risk_active or bias_ma5 < -5
+                else EvidenceSignal.NEUTRAL
+            ),
+            raw_value=f"bias_ma5={bias_ma5:.2f}%",
+            plain_text=(
+                f"股价距离 MA5 的乖离率为 {bias_ma5:.2f}%，位置贴近短线支撑，买点不算追。"
+                if 0 <= bias_ma5 <= 2
+                else f"股价距离 MA5 的乖离率为 {bias_ma5:.2f}%，已经偏离短线均线，追高风险上升。"
+                if chase_risk_active
+                else f"股价距离 MA5 的乖离率为 {bias_ma5:.2f}%，位置不算理想，先等确认更稳。"
+            ),
+        ),
+        EvidenceItem(
+            name="support_resistance",
+            signal=EvidenceSignal.NEUTRAL,
+            raw_value=f"support={support_level:.2f},resistance={resistance_level:.2f}",
+            plain_text=f"近 20 个交易日观察区间：支撑位约 {support_level:.2f}，压力位约 {resistance_level:.2f}。",
+        ),
+        EvidenceItem(
+            name="trend_score",
+            signal=(
+                EvidenceSignal.POSITIVE
+                if trend_score >= 70
+                else EvidenceSignal.NEGATIVE
+                if trend_score <= 35
+                else EvidenceSignal.NEUTRAL
+            ),
+            raw_value=trend_score,
+            plain_text=f"趋势位置综合评分为 {trend_score}/100，已同时考虑均线结构、MA5 乖离率和量价配合。",
+        ),
         EvidenceItem(
             name="ma_alignment",
             signal=(
@@ -113,6 +192,16 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
     ]
     risk_evidence = [
         EvidenceItem(
+            name="chase_risk",
+            signal=EvidenceSignal.NEGATIVE if chase_risk_active else EvidenceSignal.NEUTRAL,
+            raw_value=f"bias_ma5={bias_ma5:.2f}%",
+            plain_text=(
+                f"股价相对 MA5 的乖离率已达 {bias_ma5:.2f}%，对新手来说这更像追高，不适合把它当作舒服买点。"
+                if chase_risk_active
+                else f"股价相对 MA5 的乖离率为 {bias_ma5:.2f}%，暂未触发追高警报。"
+            ),
+        ),
+        EvidenceItem(
             name="volatility",
             signal=EvidenceSignal.NEGATIVE if volatility > 0.35 else EvidenceSignal.NEUTRAL,
             raw_value=round(volatility, 4),
@@ -130,7 +219,7 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
     verdict_value, confidence_value, bias_value = choose_verdict(
         positives=positives,
         negatives=negatives,
-        veto=drawdown > 0.35 and volatility > 0.45,
+        veto=(drawdown > 0.35 and volatility > 0.45) or chase_risk_active,
         partial=False,
     )
     return AnalysisResult(
