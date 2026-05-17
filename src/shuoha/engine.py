@@ -11,17 +11,70 @@ from shuoha.indicators import (
 )
 from shuoha.reporting.agent_renderer import render_agent_markdown
 from shuoha.reporting.markdown_renderer import render_markdown
-from shuoha.rules import choose_verdict
+from shuoha.rules import choose_structured_verdict
 from shuoha.schemas import (
+    ActionPlan,
     AnalysisResult,
     AnalysisStatus,
     BasicContext,
     Confidence,
     EvidenceItem,
     EvidenceSignal,
+    RiskProfile,
+    TrendSnapshot,
     Verdict,
     VerdictBias,
 )
+
+
+def _risk_level(risk_score: int) -> str:
+    if risk_score >= 80:
+        return "extreme"
+    if risk_score >= 55:
+        return "high"
+    if risk_score >= 30:
+        return "medium"
+    return "low"
+
+
+def _build_action_plan(
+    *,
+    verdict_value: str | None,
+    bias_ma5: float,
+    support_level: float,
+    resistance_level: float,
+    ma20: float,
+    latest_volume_ratio: float,
+    chase_risk_active: bool,
+) -> ActionPlan:
+    trigger = (
+        f"价格回到 MA5 附近且乖离率降到 5% 以内，同时量能维持在近 20 日均量的 1.15 倍以上。"
+        if chase_risk_active
+        else f"价格站稳 {support_level:.2f} 上方，并且放量突破或接近 {resistance_level:.2f} 压力位时不缩量。"
+    )
+    invalidation = f"跌破 {support_level:.2f} 或重新跌回 MA20={ma20:.2f} 下方，当前判断失效。"
+    stop_loss = f"{support_level:.2f} 附近，或以 MA20={ma20:.2f} 作为纪律线。"
+    if verdict_value == Verdict.CONSIDER.value:
+        no_position = "空仓者可以放入候选，但仍要等触发条件出现后小仓试探。"
+        has_position = "持仓者可以继续观察，别在压力位附近盲目加仓。"
+    elif verdict_value == Verdict.AVOID_FOR_NOW.value:
+        no_position = "空仓者先别追高，等乖离率和风险回落后再重新评估。"
+        has_position = "持仓者优先保护本金，若跌破纪律线要减少侥幸。"
+    else:
+        no_position = "空仓者先等，不要把还没确认的信号当成买点。"
+        has_position = "持仓者先观察，不适合在信号分歧时随手加仓。"
+    return ActionPlan(
+        no_position=no_position,
+        has_position=has_position,
+        trigger_condition=trigger,
+        invalidation_condition=invalidation,
+        stop_loss=stop_loss,
+        watch_points=[
+            f"MA5 乖离率当前 {bias_ma5:.2f}%，重点看是否回到 5% 以内。",
+            f"量比当前 {latest_volume_ratio:.2f}，重点看上涨时是否能放量。",
+            invalidation,
+        ],
+    )
 
 
 def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> AnalysisResult:
@@ -51,6 +104,7 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
         else EvidenceSignal.NEUTRAL
     )
     chase_risk_active = bias_ma5 > 5.0
+    hard_veto = chase_risk_active or (drawdown > 0.35 and volatility > 0.45)
     trend_score = 50
     if ma_stack_signal == EvidenceSignal.POSITIVE:
         trend_score += 20
@@ -67,6 +121,50 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
     elif latest_close < previous_close and latest_volume_ratio >= 1.15:
         trend_score -= 10
     trend_score = max(0, min(100, trend_score))
+    risk_score = 0
+    risk_reasons: list[str] = []
+    if chase_risk_active:
+        risk_score += 45
+        risk_reasons.append("MA5 乖离率超过 5%，触发追高风险。")
+    if volatility > 0.35:
+        risk_score += 20
+        risk_reasons.append("年化波动率偏高。")
+    if drawdown > 0.20:
+        risk_score += 25
+        risk_reasons.append("距离阶段高点回撤超过 20%。")
+    if drawdown > 0.35 and volatility > 0.45:
+        risk_score += 35
+        risk_reasons.append("深回撤与高波动同时出现，风险优先。")
+    risk_score = max(0, min(100, risk_score))
+    ma_alignment_label = (
+        "bullish"
+        if ma_stack_signal == EvidenceSignal.POSITIVE
+        else "bearish"
+        if ma_stack_signal == EvidenceSignal.NEGATIVE
+        else "neutral"
+    )
+    trend_snapshot = TrendSnapshot(
+        current_price=latest_close,
+        ma5=ma5,
+        ma10=ma10,
+        ma20=ma20,
+        ma60=ma60,
+        bias_ma5=round(bias_ma5, 4),
+        support_level=support_level,
+        resistance_level=resistance_level,
+        volume_ratio=latest_volume_ratio,
+        trend_score=trend_score,
+        ma_alignment=ma_alignment_label,
+    )
+    risk_profile = RiskProfile(
+        risk_level=_risk_level(risk_score),
+        risk_score=risk_score,
+        hard_veto=hard_veto,
+        chase_risk=chase_risk_active,
+        volatility=round(volatility, 4),
+        max_drawdown=round(drawdown, 4),
+        reasons=risk_reasons,
+    )
 
     technical_evidence = [
         EvidenceItem(
@@ -214,13 +312,20 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
             plain_text="距离高点回撤较深，需要更谨慎。" if drawdown > 0.20 else "回撤还没有到特别危险的程度。",
         ),
     ]
-    positives = sum(item.signal == EvidenceSignal.POSITIVE for item in technical_evidence + risk_evidence)
-    negatives = sum(item.signal == EvidenceSignal.NEGATIVE for item in technical_evidence + risk_evidence)
-    verdict_value, confidence_value, bias_value = choose_verdict(
-        positives=positives,
-        negatives=negatives,
-        veto=(drawdown > 0.35 and volatility > 0.45) or chase_risk_active,
+    verdict_value, confidence_value, bias_value = choose_structured_verdict(
+        trend_score=trend_score,
+        risk_score=risk_score,
+        hard_veto=hard_veto,
         partial=False,
+    )
+    action_plan = _build_action_plan(
+        verdict_value=verdict_value,
+        bias_ma5=bias_ma5,
+        support_level=support_level,
+        resistance_level=resistance_level,
+        ma20=ma20,
+        latest_volume_ratio=latest_volume_ratio,
+        chase_risk_active=chase_risk_active,
     )
     return AnalysisResult(
         status=AnalysisStatus.OK,
@@ -235,6 +340,9 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
         unknowns=[],
         data_warnings=[],
         basic_context=BasicContext(industry=None, company_summary=f"{company_name} 的公司简介暂未补全。"),
+        trend_snapshot=trend_snapshot,
+        risk_profile=risk_profile,
+        action_plan=action_plan,
         disclaimer="本报告仅供学习交流，不构成投资建议。",
     )
 

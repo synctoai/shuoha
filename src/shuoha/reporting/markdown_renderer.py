@@ -246,6 +246,54 @@ def _watch_points(result: AnalysisResult) -> str:
     return "\n".join(points[:3])
 
 
+def _structured_action_plan(result: AnalysisResult) -> str:
+    lines = []
+    trend = result.trend_snapshot
+    risk = result.risk_profile
+    plan = result.action_plan
+    if trend is not None:
+        lines.extend(
+            [
+                f"- 趋势评分：`{trend.trend_score}/100`",
+                (
+                    "- 价格位置："
+                    f"现价 `{trend.current_price:.2f}`，"
+                    f"支撑位 `{trend.support_level:.2f}`，"
+                    f"压力位 `{trend.resistance_level:.2f}`，"
+                    f"MA5 乖离率 `{trend.bias_ma5:.2f}%`。"
+                ),
+                (
+                    "- 均线结构："
+                    f"MA5 `{trend.ma5:.2f}` / MA10 `{trend.ma10:.2f}` / "
+                    f"MA20 `{trend.ma20:.2f}` / MA60 `{trend.ma60:.2f}`，"
+                    f"结构 `{trend.ma_alignment}`。"
+                ),
+            ]
+        )
+    if risk is not None:
+        lines.extend(
+            [
+                f"- 风险评分：`{risk.risk_score}/100`",
+                f"- 风险等级：`{risk.risk_level}`",
+            ]
+        )
+        if risk.reasons:
+            lines.append(f"- 风险原因：{'；'.join(risk.reasons)}")
+    if plan is not None:
+        lines.extend(
+            [
+                f"- 空仓者：{plan.no_position}",
+                f"- 持仓者：{plan.has_position}",
+                f"- 触发条件：{plan.trigger_condition}",
+                f"- 失效条件：{plan.invalidation_condition}",
+                f"- 止损位：{plan.stop_loss}",
+            ]
+        )
+        if plan.watch_points:
+            lines.append(f"- 观察点：{'；'.join(plan.watch_points)}")
+    return _join_or_default(lines, "- 当前还没有生成结构化行动计划，先按下方观察条件执行。")
+
+
 def _beginner_mistakes(result: AnalysisResult) -> str:
     mistakes = []
     trend_item = _find_evidence(result, "ma_alignment")
@@ -347,6 +395,9 @@ def render_markdown(result: AnalysisResult) -> str:
 
 ## 证据判决书
 {_scorecard(result)}
+
+## 行动计划
+{_structured_action_plan(result)}
 
 ## 这家公司是做什么的
 - 行业：{industry}

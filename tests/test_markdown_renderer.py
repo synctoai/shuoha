@@ -1,11 +1,14 @@
 from shuoha.reporting.markdown_renderer import render_markdown
 from shuoha.schemas import (
+    ActionPlan,
     AnalysisResult,
     AnalysisStatus,
     BasicContext,
     Confidence,
     EvidenceItem,
     EvidenceSignal,
+    RiskProfile,
+    TrendSnapshot,
     Verdict,
     VerdictBias,
 )
@@ -241,6 +244,63 @@ def test_render_markdown_explains_trade_location_terms_for_beginners():
     assert "支撑位" in markdown
     assert "压力位" in markdown
     assert "追高" in markdown
+
+
+def test_render_markdown_uses_structured_action_plan_when_available():
+    result = AnalysisResult(
+        status=AnalysisStatus.OK,
+        stock_code="600519",
+        company_name="贵州茅台",
+        as_of_date="2026-04-06",
+        verdict=Verdict.WAIT,
+        bias=VerdictBias.NEUTRAL,
+        confidence=Confidence.MEDIUM,
+        technical_evidence=[],
+        risk_evidence=[],
+        unknowns=[],
+        data_warnings=[],
+        basic_context=BasicContext(industry="白酒", company_summary="主营高端白酒。"),
+        trend_snapshot=TrendSnapshot(
+            current_price=1500.0,
+            ma5=1490.0,
+            ma10=1480.0,
+            ma20=1460.0,
+            ma60=1400.0,
+            bias_ma5=0.67,
+            support_level=1450.0,
+            resistance_level=1520.0,
+            volume_ratio=1.2,
+            trend_score=72,
+            ma_alignment="bullish",
+        ),
+        risk_profile=RiskProfile(
+            risk_level="medium",
+            risk_score=35,
+            hard_veto=False,
+            chase_risk=False,
+            volatility=0.2,
+            max_drawdown=0.18,
+            reasons=["回撤接近警戒线。"],
+        ),
+        action_plan=ActionPlan(
+            no_position="空仓者先等突破确认。",
+            has_position="持仓者观察压力位。",
+            trigger_condition="放量突破 1520.00。",
+            invalidation_condition="跌破 1450.00。",
+            stop_loss="1450.00 附近。",
+            watch_points=["量比保持 1.15 以上", "MA5 乖离率不要超过 5%"],
+        ),
+        disclaimer="本报告仅供学习交流，不构成投资建议。",
+    )
+
+    markdown = render_markdown(result)
+
+    assert "## 行动计划" in markdown
+    assert "空仓者先等突破确认" in markdown
+    assert "持仓者观察压力位" in markdown
+    assert "放量突破 1520.00" in markdown
+    assert "风险评分：`35/100`" in markdown
+    assert "趋势评分：`72/100`" in markdown
 
 
 def test_render_markdown_adds_counterexample_section():

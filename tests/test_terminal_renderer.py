@@ -1,5 +1,6 @@
 from shuoha.reporting.terminal_renderer import render_terminal_report, render_terminal_summary
 from shuoha.schemas import (
+    ActionPlan,
     AnalysisResult,
     AnalysisStatus,
     BasicContext,
@@ -52,6 +53,25 @@ def test_render_terminal_summary_uses_card_like_labels():
     assert "[最大风险]" in text
     assert "[下一步]" in text
     assert "=" in text
+
+
+def test_render_terminal_summary_prefers_structured_action_plan():
+    result = _sample_result()
+    result.action_plan = ActionPlan(
+        no_position="空仓者等放量突破 1520.00 再说。",
+        has_position="持仓者盯住 1450.00 止损线。",
+        trigger_condition="放量突破 1520.00。",
+        invalidation_condition="跌破 1450.00。",
+        stop_loss="1450.00 附近。",
+        watch_points=["量比保持 1.15 以上"],
+    )
+
+    text = render_terminal_summary(result)
+
+    assert "[空仓]" in text
+    assert "空仓者等放量突破 1520.00 再说" in text
+    assert "[持仓]" in text
+    assert "持仓者盯住 1450.00 止损线" in text
 
 
 def test_render_terminal_report_strips_markdown_syntax_and_adds_sections():

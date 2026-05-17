@@ -24,6 +24,48 @@ def _format_result(result: AnalysisResult) -> str:
         for item in evidence
     ]
     context = result.basic_context
+    trend_lines: list[str] = []
+    if result.trend_snapshot is not None:
+        trend = result.trend_snapshot
+        trend_lines = [
+            "结构化趋势快照：",
+            f"- 当前价格：{trend.current_price:.2f}",
+            (
+                "- 均线："
+                f"MA5={trend.ma5:.2f}, MA10={trend.ma10:.2f}, "
+                f"MA20={trend.ma20:.2f}, MA60={trend.ma60:.2f}"
+            ),
+            f"- MA5 乖离率：{trend.bias_ma5:.2f}%",
+            f"- 支撑/压力：{trend.support_level:.2f}/{trend.resistance_level:.2f}",
+            f"- 量能比：{trend.volume_ratio:.2f}",
+            f"- 趋势评分：{trend.trend_score}/100",
+            f"- 均线结构：{trend.ma_alignment}",
+        ]
+    risk_lines: list[str] = []
+    if result.risk_profile is not None:
+        risk = result.risk_profile
+        risk_lines = [
+            "结构化风险画像：",
+            f"- 风险评分：{risk.risk_score}/100",
+            f"- 风险等级：{risk.risk_level}",
+            f"- 硬性否决：{risk.hard_veto}",
+            f"- 追高风险：{risk.chase_risk}",
+            f"- 波动率：{risk.volatility:.2%}",
+            f"- 最大回撤：{risk.max_drawdown:.2%}",
+            f"- 风险原因：{'；'.join(risk.reasons) if risk.reasons else '暂无'}",
+        ]
+    action_lines: list[str] = []
+    if result.action_plan is not None:
+        plan = result.action_plan
+        action_lines = [
+            "结构化行动计划：",
+            f"- 空仓者建议：{plan.no_position}",
+            f"- 持仓者建议：{plan.has_position}",
+            f"- 触发条件：{plan.trigger_condition}",
+            f"- 失效条件：{plan.invalidation_condition}",
+            f"- 止损位：{plan.stop_loss}",
+            f"- 观察点：{'；'.join(plan.watch_points) if plan.watch_points else '暂无'}",
+        ]
     return "\n".join(
         [
             f"股票：{result.company_name} ({result.stock_code})",
@@ -33,6 +75,9 @@ def _format_result(result: AnalysisResult) -> str:
             f"本地确定性结论参考：{result.verdict.value if result.verdict else 'no_verdict'}",
             f"偏向：{result.bias.value}",
             f"置信度：{result.confidence.value}",
+            "\n".join(trend_lines) if trend_lines else "结构化趋势快照：暂无",
+            "\n".join(risk_lines) if risk_lines else "结构化风险画像：暂无",
+            "\n".join(action_lines) if action_lines else "结构化行动计划：暂无",
             "本地技术/风险证据：",
             "\n".join(evidence_lines) if evidence_lines else "- 无",
             f"本地数据告警：{result.data_warnings or []}",

@@ -18,6 +18,11 @@ def render_terminal_summary(result: AnalysisResult) -> str:
             continue
         label, value = line.split("：", 1)
         body.append(f"[{label}] {_strip_inline_markdown(value)}")
+    if result.action_plan is not None:
+        body.append(f"[空仓] {_strip_inline_markdown(result.action_plan.no_position)}")
+        body.append(f"[持仓] {_strip_inline_markdown(result.action_plan.has_position)}")
+        body.append(f"[触发] {_strip_inline_markdown(result.action_plan.trigger_condition)}")
+        body.append(f"[失效] {_strip_inline_markdown(result.action_plan.invalidation_condition)}")
     top = "================ 电梯摘要 ================"
     bottom = "=" * len(top)
     return "\n".join([top, *body, bottom])

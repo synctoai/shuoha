@@ -97,6 +97,19 @@ def test_summarize_signals_adds_trade_location_and_trend_structure_evidence():
     assert "support_resistance" in evidence_names
     assert "trend_score" in evidence_names
     assert any("MA5" in item.plain_text and "MA10" in item.plain_text for item in result.technical_evidence)
+    assert result.trend_snapshot is not None
+    assert result.trend_snapshot.ma5 > 0
+    assert result.trend_snapshot.ma10 > 0
+    assert result.trend_snapshot.ma20 > 0
+    assert result.trend_snapshot.ma60 > 0
+    assert result.trend_snapshot.support_level <= result.trend_snapshot.resistance_level
+    assert 0 <= result.trend_snapshot.trend_score <= 100
+    assert result.risk_profile is not None
+    assert 0 <= result.risk_profile.risk_score <= 100
+    assert result.action_plan is not None
+    assert "空仓" in result.action_plan.no_position
+    assert "持仓" in result.action_plan.has_position
+    assert result.action_plan.watch_points
 
 
 def test_summarize_signals_flags_chase_risk_when_price_is_extended_from_ma5():
@@ -125,6 +138,13 @@ def test_summarize_signals_flags_chase_risk_when_price_is_extended_from_ma5():
     assert "乖离率" in chase_risk.plain_text
     assert "追高" in chase_risk.plain_text
     assert result.verdict.value != "consider"
+    assert result.risk_profile is not None
+    assert result.risk_profile.chase_risk is True
+    assert result.risk_profile.hard_veto is True
+    assert result.risk_profile.risk_level in {"high", "extreme"}
+    assert result.action_plan is not None
+    assert "追高" in result.action_plan.no_position
+    assert "跌破" in result.action_plan.invalidation_condition
 
 
 def test_run_analysis_returns_partial_when_provider_fails(monkeypatch):

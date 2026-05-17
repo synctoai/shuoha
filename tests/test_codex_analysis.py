@@ -1,12 +1,15 @@
 from shuoha.codex_analysis import CodexStockContext, build_codex_prompt, run_codex_analysis
 from shuoha.data.providers.base import ProviderPayload
 from shuoha.schemas import (
+    ActionPlan,
     AnalysisResult,
     AnalysisStatus,
     BasicContext,
     Confidence,
     EvidenceItem,
     EvidenceSignal,
+    RiskProfile,
+    TrendSnapshot,
     Verdict,
     VerdictBias,
 )
@@ -35,6 +38,36 @@ def _result(stock_code="000657"):
         unknowns=[],
         data_warnings=[],
         basic_context=BasicContext(industry="有色金属", company_summary="主营硬质合金。"),
+        trend_snapshot=TrendSnapshot(
+            current_price=10.0,
+            ma5=9.8,
+            ma10=9.5,
+            ma20=9.0,
+            ma60=8.0,
+            bias_ma5=2.04,
+            support_level=9.3,
+            resistance_level=10.5,
+            volume_ratio=1.2,
+            trend_score=72,
+            ma_alignment="bullish",
+        ),
+        risk_profile=RiskProfile(
+            risk_level="medium",
+            risk_score=35,
+            hard_veto=False,
+            chase_risk=False,
+            volatility=0.18,
+            max_drawdown=0.21,
+            reasons=["回撤较深。"],
+        ),
+        action_plan=ActionPlan(
+            no_position="空仓者等待触发条件。",
+            has_position="持仓者盯住止损线。",
+            trigger_condition="放量突破 10.50。",
+            invalidation_condition="跌破 9.30。",
+            stop_loss="9.30 附近。",
+            watch_points=["量比保持 1.15 以上"],
+        ),
         disclaimer="本报告仅供学习交流，不构成投资建议。",
     )
 
@@ -65,6 +98,17 @@ def test_build_codex_prompt_requires_actionable_risk_first_dashboard_contract():
     assert "YYYY-MM-DD" in prompt
     assert "超出时间窗口" in prompt
     assert "技术面一致性" in prompt
+
+
+def test_build_codex_prompt_includes_structured_snapshots_and_action_plan():
+    prompt = build_codex_prompt([CodexStockContext(stock_code="000657", result=_result())])
+    assert "结构化趋势快照" in prompt
+    assert "趋势评分：72/100" in prompt
+    assert "风险评分：35/100" in prompt
+    assert "风险等级：medium" in prompt
+    assert "结构化行动计划" in prompt
+    assert "空仓者等待触发条件" in prompt
+    assert "放量突破 10.50" in prompt
 
 
 def test_build_codex_prompt_includes_partial_context_warning():
