@@ -3,7 +3,7 @@ from datetime import date
 from typer.testing import CliRunner
 
 from shuoha.cli import app
-from shuoha.config import default_codex_output_dir
+from shuoha.config import codex_report_filename, default_codex_output_dir
 from shuoha.external_cli import ExternalCliError
 from shuoha.schemas import AnalysisResult, AnalysisStatus, BasicContext, Confidence, Verdict, VerdictBias
 
@@ -43,6 +43,7 @@ def test_help_mentions_cli_backend_option():
     assert "--cli" in result.stdout
     assert "local" in result.stdout
     assert "codex" in result.stdout
+    assert "<股票代码>-<日期>.md" in result.stdout
 
 
 def test_cli_backend_rejects_unknown_value():
@@ -63,10 +64,11 @@ def test_local_cli_rejects_multiple_stock_codes():
 def test_codex_cli_accepts_multiple_stock_codes(monkeypatch, tmp_path):
     written = {}
 
-    def fake_write_markdown_report(report_markdown, output_dir):
+    def fake_write_markdown_report(report_markdown, output_dir, filename):
         written["markdown"] = report_markdown
         written["output_dir"] = output_dir
-        return tmp_path / "report.md"
+        written["filename"] = filename
+        return tmp_path / filename
 
     monkeypatch.setattr(
         "shuoha.cli.run_codex_analysis",
@@ -81,7 +83,9 @@ def test_codex_cli_accepts_multiple_stock_codes(monkeypatch, tmp_path):
     assert "决策仪表盘" in result.stdout
     assert "已生成" in result.stdout
     assert written["markdown"].startswith("🎯")
-    assert "codex" in written["output_dir"].parts
+    assert written["output_dir"].parts[-2:] == ("out", "codex")
+    assert written["filename"].startswith("000657-600105-")
+    assert written["filename"].endswith(".md")
 
 
 def test_codex_cli_prints_progress_to_stderr(monkeypatch, tmp_path):
@@ -92,7 +96,10 @@ def test_codex_cli_prints_progress_to_stderr(monkeypatch, tmp_path):
         return "# codex report"
 
     monkeypatch.setattr("shuoha.cli.run_codex_analysis", fake_run_codex_analysis)
-    monkeypatch.setattr("shuoha.cli.write_markdown_report", lambda report_markdown, output_dir: tmp_path / "report.md")
+    monkeypatch.setattr(
+        "shuoha.cli.write_markdown_report",
+        lambda report_markdown, output_dir, filename: tmp_path / filename,
+    )
 
     runner = CliRunner()
     result = runner.invoke(app, ["analyze", "002050", "--cli", "codex"])
@@ -116,8 +123,15 @@ def test_codex_cli_prints_external_cli_errors(monkeypatch):
     assert "未找到 codex 命令" in result.stdout
 
 
-def test_default_codex_output_dir_uses_date_partition():
-    assert default_codex_output_dir(today=date(2026, 5, 17)).parts[-3:] == ("out", "codex", "2026-05-17")
+def test_default_codex_output_dir_uses_codex_directory():
+    assert default_codex_output_dir().parts[-2:] == ("out", "codex")
+
+
+def test_codex_report_filename_uses_stock_codes_and_date():
+    assert codex_report_filename(["000021"], today=date(2026, 5, 17)) == "000021-2026-05-17.md"
+    assert codex_report_filename(["000657", "600105"], today=date(2026, 5, 17)) == (
+        "000657-600105-2026-05-17.md"
+    )
 
 
 def test_analyze_prints_elevator_summary_before_output_paths(monkeypatch, tmp_path):

@@ -178,7 +178,7 @@ shuoha analyze 600519 --cli local
 shuoha analyze 000657 600105 300260 --cli codex
 ```
 
-`--cli codex` 会生成一份多股票决策仪表盘报告，并写入 `out/codex/<date>/report.md`。
+`--cli codex` 会生成一份多股票决策仪表盘报告，并写入 `out/codex/<stock-code>-<date>.md`。
 
 ### 输出内容说明
 

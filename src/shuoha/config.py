@@ -7,8 +7,12 @@ def default_output_dir(stock_code: str) -> Path:
 
 
 def default_codex_output_dir(today: date | None = None) -> Path:
+    return Path("out") / "codex"
+
+
+def codex_report_filename(stock_codes: list[str], today: date | None = None) -> str:
     value = today or date.today()
-    return Path("out") / "codex" / value.isoformat()
+    return f"{'-'.join(stock_codes)}-{value.isoformat()}.md"
 
 
 def default_cache_dir() -> Path:

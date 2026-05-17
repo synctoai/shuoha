@@ -6,7 +6,7 @@ import typer
 from rich import print
 
 from shuoha.codex_analysis import run_codex_analysis
-from shuoha.config import default_codex_output_dir, default_output_dir
+from shuoha.config import codex_report_filename, default_codex_output_dir, default_output_dir
 from shuoha.engine import run_analysis
 from shuoha.external_cli import ExternalCliError
 from shuoha.reporting.output import write_markdown_report, write_outputs
@@ -29,6 +29,7 @@ ANALYZE_EPILOG = """示例：
 说明：
   local 模式只支持单只股票。
   codex 模式支持多股票，会复用本地 AKShare 和指标结果，再调用本机 Codex CLI 生成深度报告。
+  codex 默认保存为 out/codex/<股票代码>-<日期>.md。
 """
 
 
@@ -51,7 +52,10 @@ def analyze(
         list[str],
         typer.Argument(help="6 位 A 股股票代码。local 模式只支持 1 只，多股票请使用 --cli codex。"),
     ],
-    output_dir: Annotated[Path | None, typer.Option(help="输出目录。local 默认 out/<股票代码>，codex 默认 out/codex/<日期>。")] = None,
+    output_dir: Annotated[
+        Path | None,
+        typer.Option(help="输出目录。local 默认 out/<股票代码>，codex 默认 out/codex。"),
+    ] = None,
     agent: Annotated[
         bool,
         typer.Option(help="使用 OpenAI 对本地确定性分析结果做中文 Markdown 改写，不改变底层证据。"),
@@ -82,7 +86,11 @@ def analyze(
             typer.echo(str(exc))
             raise typer.Exit(2) from exc
         print(markdown)
-        report_path = write_markdown_report(markdown, output_dir or default_codex_output_dir())
+        report_path = write_markdown_report(
+            markdown,
+            output_dir or default_codex_output_dir(),
+            codex_report_filename(stock_codes),
+        )
         print(f"[green]已生成[/green] {report_path}")
         return
     if len(stock_codes) != 1:
