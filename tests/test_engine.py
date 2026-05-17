@@ -213,6 +213,16 @@ def test_run_analysis_falls_back_to_local_renderer_when_agent_path_unavailable(m
             for day in range(1, 31)
         ],
         as_of_date="2026-04-30",
+        event_risks=[
+            EventRisk(
+                event_type="shareholder_reduction",
+                title="控股股东计划减持股份公告",
+                event_date="2026-04-29",
+                severity=EventSeverity.BLOCKER,
+                source="eastmoney_notice",
+                summary="减持计划可能压制短期风险偏好。",
+            )
+        ],
     )
 
     monkeypatch.setattr("shuoha.engine.AKShareProvider.fetch", lambda self, stock_code: payload)
@@ -227,3 +237,5 @@ def test_run_analysis_falls_back_to_local_renderer_when_agent_path_unavailable(m
 
     assert markdown == "fallback markdown"
     assert any("LLM 改写不可用" in warning for warning in result.data_warnings)
+    assert result.news_risk_profile is not None
+    assert result.news_risk_profile.hard_veto is True

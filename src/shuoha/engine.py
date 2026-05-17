@@ -434,7 +434,12 @@ def run_analysis(stock_code: str, *, agent: bool = False):
         markdown = render_markdown(result)
         return result, markdown
 
-    result = summarize_signals(payload.stock_code, payload.company_name, payload.daily_history)
+    result = summarize_signals(
+        payload.stock_code,
+        payload.company_name,
+        payload.daily_history,
+        event_risks=payload.event_risks,
+    )
     result.basic_context = BasicContext(industry=payload.industry, company_summary=payload.company_summary)
 
     if agent and os.environ.get("OPENAI_API_KEY"):

@@ -8,6 +8,7 @@ import akshare as ak
 
 from shuoha.config import default_cache_dir
 from shuoha.data.providers.base import ProviderPayload
+from shuoha.schemas import EventRisk, EventSeverity
 
 
 def to_tx_symbol(stock_code: str) -> str:
@@ -63,6 +64,68 @@ def normalize_daily_history(rows: list[dict]) -> list[dict]:
     ]
     normalized.sort(key=lambda row: row["date"])
     return normalized
+
+
+def _row_text(row: dict, *names: str) -> str:
+    for name in names:
+        value = row.get(name)
+        if value is not None:
+            text = str(value).strip()
+            if text and text.lower() != "nan":
+                return text
+    return ""
+
+
+def _row_stock_code(row: dict) -> str:
+    raw_code = _row_text(row, "代码", "股票代码", "证券代码", "code", "stock_code")
+    digits = "".join(char for char in raw_code if char.isdigit())
+    return digits[-6:] if len(digits) >= 6 else digits
+
+
+def _classify_event(title: str) -> tuple[str, EventSeverity] | None:
+    rules = [
+        ("regulatory_penalty", EventSeverity.BLOCKER, ("监管处罚", "处罚", "立案", "调查")),
+        ("earnings_warning", EventSeverity.BLOCKER, ("业绩预亏", "预亏", "亏损")),
+        ("shareholder_reduction", EventSeverity.BLOCKER, ("减持",)),
+        ("major_unlock", EventSeverity.RISK, ("大额解禁", "解禁")),
+        ("litigation", EventSeverity.RISK, ("诉讼", "仲裁")),
+        ("risk_notice", EventSeverity.WATCH, ("风险提示", "异常波动", "异动")),
+    ]
+    for event_type, severity, keywords in rules:
+        if any(keyword in title for keyword in keywords):
+            return event_type, severity
+    return None
+
+
+def normalize_event_risks(rows: list[dict], stock_code: str) -> list[EventRisk]:
+    risks: list[EventRisk] = []
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        if _row_stock_code(row) != stock_code:
+            continue
+        title = _row_text(row, "公告标题", "标题", "公告名称", "title")
+        if not title:
+            continue
+        classification = _classify_event(title)
+        if classification is None:
+            continue
+        event_date = _row_text(row, "公告日期", "日期", "披露日期", "date")[:10] or "未知日期"
+        key = (event_date, title)
+        if key in seen:
+            continue
+        seen.add(key)
+        event_type, severity = classification
+        risks.append(
+            EventRisk(
+                event_type=event_type,
+                title=title,
+                event_date=event_date,
+                severity=severity,
+                source="eastmoney_notice",
+                summary=f"公告标题命中事件风险关键词，需核对公告正文：{title}",
+            )
+        )
+    return risks[:10]
 
 
 class AKShareProvider:
@@ -126,12 +189,30 @@ class AKShareProvider:
         self._write_cache("profile", stock_code, profile)
         return profile
 
+    def _fetch_event_risks_remote(self, stock_code: str) -> list[EventRisk]:
+        try:
+            notices = ak.stock_notice_report(symbol="全部", date=date.today().strftime("%Y%m%d"))
+            rows = notices.to_dict(orient="records")
+            return normalize_event_risks(rows, stock_code)
+        except Exception:
+            return []
+
+    def _fetch_event_risks(self, stock_code: str) -> list[EventRisk]:
+        cached = self._read_cache("event_risks", stock_code)
+        if cached:
+            return [EventRisk.model_validate(item) for item in cached]
+        event_risks = self._fetch_event_risks_remote(stock_code)
+        self._write_cache("event_risks", stock_code, [event.model_dump(mode="json") for event in event_risks])
+        return event_risks
+
     def fetch(self, stock_code: str) -> ProviderPayload:
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             history_future = executor.submit(self._fetch_history, stock_code)
             profile_future = executor.submit(self._fetch_profile, stock_code)
+            event_risks_future = executor.submit(self._fetch_event_risks, stock_code)
             daily_history = history_future.result()
             profile = profile_future.result()
+            event_risks = event_risks_future.result()
         return ProviderPayload(
             stock_code=stock_code,
             company_name=profile["company_name"] or stock_code,
@@ -139,4 +220,5 @@ class AKShareProvider:
             company_summary=profile["company_summary"] or f"A 股上市公司 {stock_code}。",
             daily_history=daily_history,
             as_of_date=str(daily_history[-1]["date"]),
+            event_risks=event_risks,
         )

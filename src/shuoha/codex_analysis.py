@@ -185,7 +185,12 @@ def run_codex_analysis(
         _notify(progress, f"正在准备 {stock_code} 的本地行情和指标上下文...")
         try:
             payload = provider.fetch(stock_code)
-            result = summarize_signals(payload.stock_code, payload.company_name, payload.daily_history)
+            result = summarize_signals(
+                payload.stock_code,
+                payload.company_name,
+                payload.daily_history,
+                event_risks=payload.event_risks,
+            )
             result.basic_context = BasicContext(industry=payload.industry, company_summary=payload.company_summary)
             contexts.append(CodexStockContext(stock_code=stock_code, result=result))
             _notify(progress, f"已准备 {payload.stock_code}：本地数据日期 {result.as_of_date}")

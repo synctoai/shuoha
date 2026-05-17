@@ -167,6 +167,7 @@ def test_run_codex_analysis_continues_when_one_stock_fetch_fails(monkeypatch):
             for day in range(1, 31)
         ],
         as_of_date="2026-05-17",
+        event_risks=[],
     )
 
     def fake_fetch(self, stock_code):
