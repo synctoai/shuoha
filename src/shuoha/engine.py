@@ -20,6 +20,9 @@ from shuoha.schemas import (
     Confidence,
     EvidenceItem,
     EvidenceSignal,
+    EventRisk,
+    EventSeverity,
+    NewsRiskProfile,
     RiskProfile,
     TrendSnapshot,
     Verdict,
@@ -46,6 +49,7 @@ def _build_action_plan(
     ma20: float,
     latest_volume_ratio: float,
     chase_risk_active: bool,
+    event_hard_veto: bool = False,
 ) -> ActionPlan:
     trigger = (
         f"价格回到 MA5 附近且乖离率降到 5% 以内，同时量能维持在近 20 日均量的 1.15 倍以上。"
@@ -58,8 +62,16 @@ def _build_action_plan(
         no_position = "空仓者可以放入候选，但仍要等触发条件出现后小仓试探。"
         has_position = "持仓者可以继续观察，别在压力位附近盲目加仓。"
     elif verdict_value == Verdict.AVOID_FOR_NOW.value:
-        no_position = "空仓者先别追高，等乖离率和风险回落后再重新评估。"
-        has_position = "持仓者优先保护本金，若跌破纪律线要减少侥幸。"
+        no_position = (
+            "空仓者先回避，事件风险没有澄清前不要只看技术面追进去。"
+            if event_hard_veto
+            else "空仓者先别追高，等乖离率和风险回落后再重新评估。"
+        )
+        has_position = (
+            "持仓者优先处理事件风险，若公告影响继续发酵要减少侥幸。"
+            if event_hard_veto
+            else "持仓者优先保护本金，若跌破纪律线要减少侥幸。"
+        )
     else:
         no_position = "空仓者先等，不要把还没确认的信号当成买点。"
         has_position = "持仓者先观察，不适合在信号分歧时随手加仓。"
@@ -77,7 +89,31 @@ def _build_action_plan(
     )
 
 
-def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> AnalysisResult:
+def _build_news_risk_profile(event_risks: list[EventRisk] | None) -> NewsRiskProfile | None:
+    if not event_risks:
+        return None
+    severity_scores = {
+        EventSeverity.INFO: 0,
+        EventSeverity.WATCH: 15,
+        EventSeverity.RISK: 35,
+        EventSeverity.BLOCKER: 60,
+    }
+    risk_score_delta = sum(severity_scores[event.severity] for event in event_risks)
+    return NewsRiskProfile(
+        events=event_risks,
+        hard_veto=any(event.severity == EventSeverity.BLOCKER for event in event_risks),
+        risk_score_delta=max(0, min(100, risk_score_delta)),
+        unknowns=[],
+    )
+
+
+def summarize_signals(
+    stock_code: str,
+    company_name: str,
+    rows: list[dict],
+    *,
+    event_risks: list[EventRisk] | None = None,
+) -> AnalysisResult:
     closes = [row["close"] for row in rows]
     highs = [float(row.get("high", row["close"])) for row in rows]
     lows = [float(row.get("low", row["close"])) for row in rows]
@@ -104,7 +140,9 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
         else EvidenceSignal.NEUTRAL
     )
     chase_risk_active = bias_ma5 > 5.0
-    hard_veto = chase_risk_active or (drawdown > 0.35 and volatility > 0.45)
+    news_risk_profile = _build_news_risk_profile(event_risks)
+    event_hard_veto = bool(news_risk_profile and news_risk_profile.hard_veto)
+    hard_veto = chase_risk_active or (drawdown > 0.35 and volatility > 0.45) or event_hard_veto
     trend_score = 50
     if ma_stack_signal == EvidenceSignal.POSITIVE:
         trend_score += 20
@@ -135,6 +173,10 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
     if drawdown > 0.35 and volatility > 0.45:
         risk_score += 35
         risk_reasons.append("深回撤与高波动同时出现，风险优先。")
+    if news_risk_profile is not None:
+        risk_score += news_risk_profile.risk_score_delta
+        event_titles = "；".join(event.title for event in news_risk_profile.events[:3])
+        risk_reasons.append(f"事件风险进入本地判定：{event_titles}。")
     risk_score = max(0, min(100, risk_score))
     ma_alignment_label = (
         "bullish"
@@ -312,6 +354,26 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
             plain_text="距离高点回撤较深，需要更谨慎。" if drawdown > 0.20 else "回撤还没有到特别危险的程度。",
         ),
     ]
+    if news_risk_profile is not None:
+        event_titles = "；".join(
+            f"{event.event_date} {event.title}({event.severity.value})" for event in news_risk_profile.events[:3]
+        )
+        risk_evidence.append(
+            EvidenceItem(
+                name="event_risk",
+                signal=(
+                    EvidenceSignal.NEGATIVE
+                    if news_risk_profile.hard_veto or news_risk_profile.risk_score_delta >= 35
+                    else EvidenceSignal.NEUTRAL
+                ),
+                raw_value=f"risk_score_delta={news_risk_profile.risk_score_delta},hard_veto={news_risk_profile.hard_veto}",
+                plain_text=(
+                    f"本地事件风险：{event_titles}。事件风险优先于技术面，需要先确认影响是否消化。"
+                    if news_risk_profile.hard_veto
+                    else f"本地事件风险：{event_titles}。需要纳入风险折扣。"
+                ),
+            )
+        )
     verdict_value, confidence_value, bias_value = choose_structured_verdict(
         trend_score=trend_score,
         risk_score=risk_score,
@@ -326,6 +388,7 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
         ma20=ma20,
         latest_volume_ratio=latest_volume_ratio,
         chase_risk_active=chase_risk_active,
+        event_hard_veto=event_hard_veto,
     )
     return AnalysisResult(
         status=AnalysisStatus.OK,
@@ -343,6 +406,7 @@ def summarize_signals(stock_code: str, company_name: str, rows: list[dict]) -> A
         trend_snapshot=trend_snapshot,
         risk_profile=risk_profile,
         action_plan=action_plan,
+        news_risk_profile=news_risk_profile,
         disclaimer="本报告仅供学习交流，不构成投资建议。",
     )
 

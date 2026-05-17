@@ -33,6 +33,13 @@ class EvidenceSignal(str, Enum):
     NEGATIVE = "negative"
 
 
+class EventSeverity(str, Enum):
+    INFO = "info"
+    WATCH = "watch"
+    RISK = "risk"
+    BLOCKER = "blocker"
+
+
 class EvidenceItem(BaseModel):
     name: str
     signal: EvidenceSignal
@@ -78,6 +85,22 @@ class ActionPlan(BaseModel):
     watch_points: list[str] = Field(default_factory=list)
 
 
+class EventRisk(BaseModel):
+    event_type: str
+    title: str
+    event_date: str
+    severity: EventSeverity
+    source: str
+    summary: str
+
+
+class NewsRiskProfile(BaseModel):
+    events: list[EventRisk] = Field(default_factory=list)
+    hard_veto: bool
+    risk_score_delta: int
+    unknowns: list[str] = Field(default_factory=list)
+
+
 class AnalysisResult(BaseModel):
     status: AnalysisStatus
     stock_code: str
@@ -94,4 +117,5 @@ class AnalysisResult(BaseModel):
     trend_snapshot: TrendSnapshot | None = None
     risk_profile: RiskProfile | None = None
     action_plan: ActionPlan | None = None
+    news_risk_profile: NewsRiskProfile | None = None
     disclaimer: str

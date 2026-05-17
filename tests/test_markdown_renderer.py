@@ -5,8 +5,11 @@ from shuoha.schemas import (
     AnalysisStatus,
     BasicContext,
     Confidence,
+    EventRisk,
+    EventSeverity,
     EvidenceItem,
     EvidenceSignal,
+    NewsRiskProfile,
     RiskProfile,
     TrendSnapshot,
     Verdict,
@@ -301,6 +304,46 @@ def test_render_markdown_uses_structured_action_plan_when_available():
     assert "放量突破 1520.00" in markdown
     assert "风险评分：`35/100`" in markdown
     assert "趋势评分：`72/100`" in markdown
+
+
+def test_render_markdown_exposes_structured_event_risks():
+    event = EventRisk(
+        event_type="shareholder_reduction",
+        title="控股股东计划减持",
+        event_date="2026-04-05",
+        severity=EventSeverity.BLOCKER,
+        source="company_announcement",
+        summary="减持计划可能压制短期风险偏好。",
+    )
+    result = AnalysisResult(
+        status=AnalysisStatus.OK,
+        stock_code="600519",
+        company_name="贵州茅台",
+        as_of_date="2026-04-06",
+        verdict=Verdict.AVOID_FOR_NOW,
+        bias=VerdictBias.BEARISH,
+        confidence=Confidence.LOW,
+        technical_evidence=[],
+        risk_evidence=[],
+        unknowns=[],
+        data_warnings=[],
+        basic_context=BasicContext(industry="白酒", company_summary="主营高端白酒。"),
+        news_risk_profile=NewsRiskProfile(
+            events=[event],
+            hard_veto=True,
+            risk_score_delta=60,
+            unknowns=[],
+        ),
+        disclaimer="本报告仅供学习交流，不构成投资建议。",
+    )
+
+    markdown = render_markdown(result)
+
+    assert "## 事件风险" in markdown
+    assert "控股股东计划减持" in markdown
+    assert "2026-04-05" in markdown
+    assert "company_announcement" in markdown
+    assert "硬性风险" in markdown
 
 
 def test_render_markdown_adds_counterexample_section():

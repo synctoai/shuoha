@@ -66,6 +66,26 @@ def _format_result(result: AnalysisResult) -> str:
             f"- 止损位：{plan.stop_loss}",
             f"- 观察点：{'；'.join(plan.watch_points) if plan.watch_points else '暂无'}",
         ]
+    event_lines: list[str] = []
+    if result.news_risk_profile is not None:
+        profile = result.news_risk_profile
+        event_lines = [
+            "结构化事件风险：",
+            f"- hard_veto={profile.hard_veto}",
+            f"- risk_score_delta={profile.risk_score_delta}",
+        ]
+        event_lines.extend(
+            [
+                (
+                    f"- {event.event_date} {event.title}: "
+                    f"type={event.event_type}; severity={event.severity.value}; "
+                    f"source={event.source}; summary={event.summary}"
+                )
+                for event in profile.events
+            ]
+        )
+        if profile.unknowns:
+            event_lines.append(f"- unknowns={'；'.join(profile.unknowns)}")
     return "\n".join(
         [
             f"股票：{result.company_name} ({result.stock_code})",
@@ -78,6 +98,7 @@ def _format_result(result: AnalysisResult) -> str:
             "\n".join(trend_lines) if trend_lines else "结构化趋势快照：暂无",
             "\n".join(risk_lines) if risk_lines else "结构化风险画像：暂无",
             "\n".join(action_lines) if action_lines else "结构化行动计划：暂无",
+            "\n".join(event_lines) if event_lines else "结构化事件风险：暂无",
             "本地技术/风险证据：",
             "\n".join(evidence_lines) if evidence_lines else "- 无",
             f"本地数据告警：{result.data_warnings or []}",

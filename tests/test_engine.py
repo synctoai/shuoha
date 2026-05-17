@@ -1,6 +1,6 @@
 from shuoha.data.providers.base import ProviderPayload
 from shuoha.engine import run_analysis, summarize_signals
-from shuoha.schemas import AnalysisResult, Verdict, VerdictBias
+from shuoha.schemas import AnalysisResult, EventRisk, EventSeverity, Verdict, VerdictBias
 
 
 def test_analysis_result_allows_partial_without_verdict():
@@ -145,6 +145,44 @@ def test_summarize_signals_flags_chase_risk_when_price_is_extended_from_ma5():
     assert result.action_plan is not None
     assert "追高" in result.action_plan.no_position
     assert "跌破" in result.action_plan.invalidation_condition
+
+
+def test_summarize_signals_event_risk_can_hard_veto_strong_trend():
+    rows = [
+        {
+            "date": f"2026-03-{day:02d}",
+            "close": float(100 + day * 0.2),
+            "volume": 1000.0,
+        }
+        for day in range(1, 31)
+    ]
+    rows += [
+        {
+            "date": f"2026-04-{day:02d}",
+            "close": float(106 + day * 0.25),
+            "volume": 1400.0,
+        }
+        for day in range(1, 31)
+    ]
+    event = EventRisk(
+        event_type="regulatory_penalty",
+        title="收到监管处罚事先告知书",
+        event_date="2026-04-29",
+        severity=EventSeverity.BLOCKER,
+        source="company_announcement",
+        summary="监管处罚可能改变市场风险偏好。",
+    )
+
+    result = summarize_signals("600519", "贵州茅台", rows, event_risks=[event])
+
+    assert result.news_risk_profile is not None
+    assert result.news_risk_profile.hard_veto is True
+    assert result.risk_profile is not None
+    assert result.risk_profile.hard_veto is True
+    assert result.verdict.value == "avoid_for_now"
+    assert any(item.name == "event_risk" and item.signal.value == "negative" for item in result.risk_evidence)
+    assert result.action_plan is not None
+    assert "事件风险" in result.action_plan.no_position
 
 
 def test_run_analysis_returns_partial_when_provider_fails(monkeypatch):

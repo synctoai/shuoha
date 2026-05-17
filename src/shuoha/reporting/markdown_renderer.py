@@ -294,6 +294,28 @@ def _structured_action_plan(result: AnalysisResult) -> str:
     return _join_or_default(lines, "- 当前还没有生成结构化行动计划，先按下方观察条件执行。")
 
 
+def _event_risk_section(result: AnalysisResult) -> str:
+    profile = result.news_risk_profile
+    if profile is None or not profile.events:
+        return "- 当前没有结构化事件风险输入；仍需关注公告、减持、解禁、处罚和业绩预警。"
+    lines = [
+        f"- 硬性风险：`{'是' if profile.hard_veto else '否'}`",
+        f"- 事件风险加分：`{profile.risk_score_delta}/100`",
+    ]
+    lines.extend(
+        [
+            (
+                f"- `{event.event_date}` {event.title}："
+                f"{event.summary} 来源 `{event.source}`，级别 `{event.severity.value}`。"
+            )
+            for event in profile.events
+        ]
+    )
+    if profile.unknowns:
+        lines.extend(f"- 未确认：{item}" for item in profile.unknowns)
+    return "\n".join(lines)
+
+
 def _beginner_mistakes(result: AnalysisResult) -> str:
     mistakes = []
     trend_item = _find_evidence(result, "ma_alignment")
@@ -408,6 +430,9 @@ def render_markdown(result: AnalysisResult) -> str:
 
 ## 需要小心的点
 {risks}
+
+## 事件风险
+{_event_risk_section(result)}
 
 ## 为什么先别急着买
 {_why_not_buy_yet(result)}

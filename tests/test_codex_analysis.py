@@ -6,8 +6,11 @@ from shuoha.schemas import (
     AnalysisStatus,
     BasicContext,
     Confidence,
+    EventRisk,
+    EventSeverity,
     EvidenceItem,
     EvidenceSignal,
+    NewsRiskProfile,
     RiskProfile,
     TrendSnapshot,
     Verdict,
@@ -68,6 +71,21 @@ def _result(stock_code="000657"):
             stop_loss="9.30 附近。",
             watch_points=["量比保持 1.15 以上"],
         ),
+        news_risk_profile=NewsRiskProfile(
+            events=[
+                EventRisk(
+                    event_type="major_unlock",
+                    title="限售股大额解禁",
+                    event_date="2026-05-16",
+                    severity=EventSeverity.RISK,
+                    source="exchange_calendar",
+                    summary="大额解禁可能带来短期抛压。",
+                )
+            ],
+            hard_veto=False,
+            risk_score_delta=35,
+            unknowns=[],
+        ),
         disclaimer="本报告仅供学习交流，不构成投资建议。",
     )
 
@@ -109,6 +127,14 @@ def test_build_codex_prompt_includes_structured_snapshots_and_action_plan():
     assert "结构化行动计划" in prompt
     assert "空仓者等待触发条件" in prompt
     assert "放量突破 10.50" in prompt
+
+
+def test_build_codex_prompt_includes_local_event_risk_profile():
+    prompt = build_codex_prompt([CodexStockContext(stock_code="000657", result=_result())])
+    assert "结构化事件风险" in prompt
+    assert "限售股大额解禁" in prompt
+    assert "2026-05-16" in prompt
+    assert "risk_score_delta=35" in prompt
 
 
 def test_build_codex_prompt_includes_partial_context_warning():
