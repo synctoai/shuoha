@@ -18,6 +18,7 @@ def run_codex_exec(prompt: str, *, cwd: Path) -> str:
             "exec",
             "--cd",
             str(cwd),
+            "--skip-git-repo-check",
             "--output-last-message",
             str(output_path),
             "-",

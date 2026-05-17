@@ -26,6 +26,7 @@ def test_run_codex_exec_writes_prompt_to_stdin_and_reads_last_message(monkeypatc
 
     assert report == "# report"
     assert calls["args"][:2] == ["codex", "exec"]
+    assert "--skip-git-repo-check" in calls["args"]
     assert "--output-last-message" in calls["args"]
     assert calls["input"] == "prompt text"
 
