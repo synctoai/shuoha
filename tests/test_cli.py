@@ -1,6 +1,10 @@
+from datetime import date
+
 from typer.testing import CliRunner
 
 from shuoha.cli import app
+from shuoha.config import default_codex_output_dir
+from shuoha.external_cli import ExternalCliError
 from shuoha.schemas import AnalysisResult, AnalysisStatus, BasicContext, Confidence, Verdict, VerdictBias
 
 
@@ -25,6 +29,61 @@ def test_help_mentions_agent_flag():
     assert "--agent" in result.stdout
     assert "--full" in result.stdout
     assert "--brief" in result.stdout
+
+
+def test_help_mentions_cli_backend_option():
+    runner = CliRunner()
+    result = runner.invoke(app, ["analyze", "--help"])
+    assert result.exit_code == 0
+    assert "--cli" in result.stdout
+
+
+def test_local_cli_rejects_multiple_stock_codes():
+    runner = CliRunner()
+    result = runner.invoke(app, ["analyze", "600519", "000657", "--cli", "local"])
+    assert result.exit_code == 2
+    assert "多股票分析目前请使用 --cli codex" in result.stdout
+
+
+def test_codex_cli_accepts_multiple_stock_codes(monkeypatch, tmp_path):
+    written = {}
+
+    def fake_write_markdown_report(report_markdown, output_dir):
+        written["markdown"] = report_markdown
+        written["output_dir"] = output_dir
+        return tmp_path / "report.md"
+
+    monkeypatch.setattr(
+        "shuoha.cli.run_codex_analysis",
+        lambda stock_codes: "🎯 2026-05-17 决策仪表盘\n共分析2只股票",
+    )
+    monkeypatch.setattr("shuoha.cli.write_markdown_report", fake_write_markdown_report)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["analyze", "000657", "600105", "--cli", "codex"])
+
+    assert result.exit_code == 0
+    assert "决策仪表盘" in result.stdout
+    assert "已生成" in result.stdout
+    assert written["markdown"].startswith("🎯")
+    assert "codex" in written["output_dir"].parts
+
+
+def test_codex_cli_prints_external_cli_errors(monkeypatch):
+    monkeypatch.setattr(
+        "shuoha.cli.run_codex_analysis",
+        lambda stock_codes: (_ for _ in ()).throw(ExternalCliError("未找到 codex 命令")),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["analyze", "000657", "--cli", "codex"])
+
+    assert result.exit_code == 2
+    assert "未找到 codex 命令" in result.stdout
+
+
+def test_default_codex_output_dir_uses_date_partition():
+    assert default_codex_output_dir(today=date(2026, 5, 17)).parts[-3:] == ("out", "codex", "2026-05-17")
 
 
 def test_analyze_prints_elevator_summary_before_output_paths(monkeypatch, tmp_path):

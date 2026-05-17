@@ -164,6 +164,22 @@ shuoha analyze 600519 --brief
 shuoha analyze 600519 --output-dir ./tmp/600519
 ```
 
+### 外部 CLI 深度分析
+
+默认本地模式仍然是确定性分析：
+
+```bash
+shuoha analyze 600519 --cli local
+```
+
+如果本机已安装并登录 Codex CLI，可以让 `shuoha` 复用 AKShare 和本地指标结果，再交给 Codex 继续研究新闻、公告、资金流、舆情和行业催化：
+
+```bash
+shuoha analyze 000657 600105 300260 --cli codex
+```
+
+`--cli codex` 会生成一份多股票决策仪表盘报告，并写入 `out/codex/<date>/report.md`。
+
 ### 输出内容说明
 
 终端默认会先显示 4 个最关键的问题：
