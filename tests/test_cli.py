@@ -12,7 +12,9 @@ def test_help_smoke():
     runner = CliRunner()
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "分析一只 A 股股票" in result.stdout
+    assert "面向投资小白的 A 股分析 CLI" in result.stdout
+    assert "shuoha analyze 600519" in result.stdout
+    assert "000657 600105 --cli codex" in result.stdout
 
 
 def test_cli_requires_stock_code_format():
@@ -29,6 +31,9 @@ def test_help_mentions_agent_flag():
     assert "--agent" in result.stdout
     assert "--full" in result.stdout
     assert "--brief" in result.stdout
+    assert "OpenAI" in result.stdout
+    assert "输出目录" in result.stdout
+    assert "多股票" in result.stdout
 
 
 def test_help_mentions_cli_backend_option():
@@ -36,6 +41,16 @@ def test_help_mentions_cli_backend_option():
     result = runner.invoke(app, ["analyze", "--help"])
     assert result.exit_code == 0
     assert "--cli" in result.stdout
+    assert "local" in result.stdout
+    assert "codex" in result.stdout
+
+
+def test_cli_backend_rejects_unknown_value():
+    runner = CliRunner()
+    result = runner.invoke(app, ["analyze", "600519", "--cli", "unknown"])
+    assert result.exit_code == 2
+    assert "local" in result.stderr
+    assert "codex" in result.stderr
 
 
 def test_local_cli_rejects_multiple_stock_codes():

@@ -11,4 +11,5 @@ def test_module_entrypoint_shows_help():
     )
 
     assert result.returncode == 0
-    assert "分析一只 A 股股票" in result.stdout
+    assert "面向投资小白的 A 股分析 CLI" in result.stdout
+    assert "shuoha analyze 600519" in result.stdout
