@@ -86,6 +86,36 @@ def _format_result(result: AnalysisResult) -> str:
         )
         if profile.unknowns:
             event_lines.append(f"- unknowns={'；'.join(profile.unknowns)}")
+    capital_lines: list[str] = []
+    if result.capital_flow is not None:
+        flow = result.capital_flow
+        capital_lines = [
+            "结构化资金流：",
+            f"- main_net_inflow={flow.main_net_inflow:.2f}",
+            f"- main_net_inflow_rate={flow.main_net_inflow_rate:.2f}%",
+            f"- retail_net_inflow={flow.retail_net_inflow}",
+            f"- source={flow.source}",
+        ]
+    fundamental_lines: list[str] = []
+    if result.fundamentals is not None:
+        fundamentals = result.fundamentals
+        fundamental_lines = [
+            "结构化基本面：",
+            f"- pe_ttm={fundamentals.pe_ttm:.2f}" if fundamentals.pe_ttm is not None else "- pe_ttm=未知",
+            f"- pb={fundamentals.pb:.2f}" if fundamentals.pb is not None else "- pb=未知",
+            f"- roe={fundamentals.roe:.2f}%" if fundamentals.roe is not None else "- roe=未知",
+            (
+                f"- revenue_growth={fundamentals.revenue_growth:.2f}%"
+                if fundamentals.revenue_growth is not None
+                else "- revenue_growth=未知"
+            ),
+            (
+                f"- profit_growth={fundamentals.profit_growth:.2f}%"
+                if fundamentals.profit_growth is not None
+                else "- profit_growth=未知"
+            ),
+            f"- source={fundamentals.source}",
+        ]
     return "\n".join(
         [
             f"股票：{result.company_name} ({result.stock_code})",
@@ -99,6 +129,8 @@ def _format_result(result: AnalysisResult) -> str:
             "\n".join(risk_lines) if risk_lines else "结构化风险画像：暂无",
             "\n".join(action_lines) if action_lines else "结构化行动计划：暂无",
             "\n".join(event_lines) if event_lines else "结构化事件风险：暂无",
+            "\n".join(capital_lines) if capital_lines else "结构化资金流：暂无",
+            "\n".join(fundamental_lines) if fundamental_lines else "结构化基本面：暂无",
             "本地技术/风险证据：",
             "\n".join(evidence_lines) if evidence_lines else "- 无",
             f"本地数据告警：{result.data_warnings or []}",

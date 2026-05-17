@@ -17,11 +17,13 @@ from shuoha.schemas import (
     AnalysisResult,
     AnalysisStatus,
     BasicContext,
+    CapitalFlowSnapshot,
     Confidence,
     EvidenceItem,
     EvidenceSignal,
     EventRisk,
     EventSeverity,
+    FundamentalSnapshot,
     NewsRiskProfile,
     RiskProfile,
     TrendSnapshot,
@@ -113,6 +115,8 @@ def summarize_signals(
     rows: list[dict],
     *,
     event_risks: list[EventRisk] | None = None,
+    capital_flow: CapitalFlowSnapshot | None = None,
+    fundamentals: FundamentalSnapshot | None = None,
 ) -> AnalysisResult:
     closes = [row["close"] for row in rows]
     highs = [float(row.get("high", row["close"])) for row in rows]
@@ -177,7 +181,19 @@ def summarize_signals(
         risk_score += news_risk_profile.risk_score_delta
         event_titles = "；".join(event.title for event in news_risk_profile.events[:3])
         risk_reasons.append(f"事件风险进入本地判定：{event_titles}。")
+    if capital_flow is not None and capital_flow.main_net_inflow_rate <= -5:
+        risk_score += 25
+        trend_score -= 10
+        risk_reasons.append(f"主力资金净流入率为 {capital_flow.main_net_inflow_rate:.2f}%，资金面偏弱。")
+    if fundamentals is not None:
+        if fundamentals.pe_ttm is not None and fundamentals.pe_ttm >= 80:
+            risk_score += 15
+            risk_reasons.append(f"PE(TTM) 为 {fundamentals.pe_ttm:.2f}，估值容错率偏低。")
+        if fundamentals.profit_growth is not None and fundamentals.profit_growth <= -20:
+            risk_score += 25
+            risk_reasons.append(f"利润增速为 {fundamentals.profit_growth:.2f}%，基本面压力偏大。")
     risk_score = max(0, min(100, risk_score))
+    trend_score = max(0, min(100, trend_score))
     ma_alignment_label = (
         "bullish"
         if ma_stack_signal == EvidenceSignal.POSITIVE
@@ -374,6 +390,46 @@ def summarize_signals(
                 ),
             )
         )
+    if capital_flow is not None:
+        risk_evidence.append(
+            EvidenceItem(
+                name="capital_flow",
+                signal=(
+                    EvidenceSignal.NEGATIVE
+                    if capital_flow.main_net_inflow_rate <= -5
+                    else EvidenceSignal.POSITIVE
+                    if capital_flow.main_net_inflow_rate >= 5
+                    else EvidenceSignal.NEUTRAL
+                ),
+                raw_value=(
+                    f"main_net_inflow={capital_flow.main_net_inflow:.2f},"
+                    f"main_net_inflow_rate={capital_flow.main_net_inflow_rate:.2f}%"
+                ),
+                plain_text=(
+                    f"主力资金净流入率为 {capital_flow.main_net_inflow_rate:.2f}%，资金持续流出会压低技术信号可信度。"
+                    if capital_flow.main_net_inflow_rate <= -5
+                    else f"主力资金净流入率为 {capital_flow.main_net_inflow_rate:.2f}%，资金面暂未拖后腿。"
+                ),
+            )
+        )
+    if fundamentals is not None:
+        weak_profit = fundamentals.profit_growth is not None and fundamentals.profit_growth <= -20
+        expensive = fundamentals.pe_ttm is not None and fundamentals.pe_ttm >= 80
+        risk_evidence.append(
+            EvidenceItem(
+                name="fundamental_quality",
+                signal=EvidenceSignal.NEGATIVE if weak_profit or expensive else EvidenceSignal.NEUTRAL,
+                raw_value=(
+                    f"pe_ttm={fundamentals.pe_ttm},pb={fundamentals.pb},"
+                    f"roe={fundamentals.roe},profit_growth={fundamentals.profit_growth}"
+                ),
+                plain_text=(
+                    "估值偏高或利润增速明显走弱，基本面对技术面形成风险折扣。"
+                    if weak_profit or expensive
+                    else "估值和业绩没有触发明显的本地风险折扣。"
+                ),
+            )
+        )
     verdict_value, confidence_value, bias_value = choose_structured_verdict(
         trend_score=trend_score,
         risk_score=risk_score,
@@ -407,6 +463,8 @@ def summarize_signals(
         risk_profile=risk_profile,
         action_plan=action_plan,
         news_risk_profile=news_risk_profile,
+        capital_flow=capital_flow,
+        fundamentals=fundamentals,
         disclaimer="本报告仅供学习交流，不构成投资建议。",
     )
 

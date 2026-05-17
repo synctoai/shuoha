@@ -5,6 +5,7 @@ from shuoha.schemas import (
     AnalysisResult,
     AnalysisStatus,
     BasicContext,
+    CapitalFlowSnapshot,
     Confidence,
     EventRisk,
     EventSeverity,
@@ -12,6 +13,7 @@ from shuoha.schemas import (
     EvidenceSignal,
     NewsRiskProfile,
     RiskProfile,
+    FundamentalSnapshot,
     TrendSnapshot,
     Verdict,
     VerdictBias,
@@ -86,6 +88,20 @@ def _result(stock_code="000657"):
             risk_score_delta=35,
             unknowns=[],
         ),
+        capital_flow=CapitalFlowSnapshot(
+            main_net_inflow=-120000000.0,
+            main_net_inflow_rate=-8.5,
+            retail_net_inflow=90000000.0,
+            source="eastmoney_fund_flow",
+        ),
+        fundamentals=FundamentalSnapshot(
+            pe_ttm=96.0,
+            pb=8.5,
+            roe=7.0,
+            revenue_growth=-12.0,
+            profit_growth=-35.0,
+            source="eastmoney_financial",
+        ),
         disclaimer="本报告仅供学习交流，不构成投资建议。",
     )
 
@@ -135,6 +151,15 @@ def test_build_codex_prompt_includes_local_event_risk_profile():
     assert "限售股大额解禁" in prompt
     assert "2026-05-16" in prompt
     assert "risk_score_delta=35" in prompt
+
+
+def test_build_codex_prompt_includes_capital_flow_and_fundamentals():
+    prompt = build_codex_prompt([CodexStockContext(stock_code="000657", result=_result())])
+    assert "结构化资金流" in prompt
+    assert "main_net_inflow_rate=-8.50%" in prompt
+    assert "结构化基本面" in prompt
+    assert "pe_ttm=96.00" in prompt
+    assert "profit_growth=-35.00%" in prompt
 
 
 def test_build_codex_prompt_includes_partial_context_warning():

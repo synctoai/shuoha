@@ -316,6 +316,35 @@ def _event_risk_section(result: AnalysisResult) -> str:
     return "\n".join(lines)
 
 
+def _capital_and_fundamental_section(result: AnalysisResult) -> str:
+    lines = []
+    if result.capital_flow is not None:
+        flow = result.capital_flow
+        lines.extend(
+            [
+                f"- 主力净流入：`{flow.main_net_inflow:.2f}`",
+                f"- 主力净流入率：`{flow.main_net_inflow_rate:.2f}%`",
+                f"- 资金来源：`{flow.source}`",
+            ]
+        )
+        if flow.retail_net_inflow is not None:
+            lines.append(f"- 散户净流入：`{flow.retail_net_inflow:.2f}`")
+    if result.fundamentals is not None:
+        fundamentals = result.fundamentals
+        if fundamentals.pe_ttm is not None:
+            lines.append(f"- PE(TTM)：`{fundamentals.pe_ttm:.2f}`")
+        if fundamentals.pb is not None:
+            lines.append(f"- PB：`{fundamentals.pb:.2f}`")
+        if fundamentals.roe is not None:
+            lines.append(f"- ROE：`{fundamentals.roe:.2f}%`")
+        if fundamentals.revenue_growth is not None:
+            lines.append(f"- 营收增速：`{fundamentals.revenue_growth:.2f}%`")
+        if fundamentals.profit_growth is not None:
+            lines.append(f"- 利润增速：`{fundamentals.profit_growth:.2f}%`")
+        lines.append(f"- 基本面来源：`{fundamentals.source}`")
+    return _join_or_default(lines, "- 当前没有结构化资金流或基本面数据。")
+
+
 def _beginner_mistakes(result: AnalysisResult) -> str:
     mistakes = []
     trend_item = _find_evidence(result, "ma_alignment")
@@ -433,6 +462,9 @@ def render_markdown(result: AnalysisResult) -> str:
 
 ## 事件风险
 {_event_risk_section(result)}
+
+## 资金与基本面
+{_capital_and_fundamental_section(result)}
 
 ## 为什么先别急着买
 {_why_not_buy_yet(result)}

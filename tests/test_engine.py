@@ -1,6 +1,14 @@
 from shuoha.data.providers.base import ProviderPayload
 from shuoha.engine import run_analysis, summarize_signals
-from shuoha.schemas import AnalysisResult, EventRisk, EventSeverity, Verdict, VerdictBias
+from shuoha.schemas import (
+    AnalysisResult,
+    CapitalFlowSnapshot,
+    EventRisk,
+    EventSeverity,
+    FundamentalSnapshot,
+    Verdict,
+    VerdictBias,
+)
 
 
 def test_analysis_result_allows_partial_without_verdict():
@@ -183,6 +191,53 @@ def test_summarize_signals_event_risk_can_hard_veto_strong_trend():
     assert any(item.name == "event_risk" and item.signal.value == "negative" for item in result.risk_evidence)
     assert result.action_plan is not None
     assert "事件风险" in result.action_plan.no_position
+
+
+def test_summarize_signals_penalizes_capital_outflow_and_weak_fundamentals():
+    rows = [
+        {
+            "date": f"2026-03-{day:02d}",
+            "close": float(100 + day * 0.2),
+            "volume": 1000.0,
+        }
+        for day in range(1, 31)
+    ]
+    rows += [
+        {
+            "date": f"2026-04-{day:02d}",
+            "close": float(106 + day * 0.25),
+            "volume": 1400.0,
+        }
+        for day in range(1, 31)
+    ]
+
+    result = summarize_signals(
+        "600519",
+        "贵州茅台",
+        rows,
+        capital_flow=CapitalFlowSnapshot(
+            main_net_inflow= -120000000.0,
+            main_net_inflow_rate=-8.5,
+            retail_net_inflow=90000000.0,
+            source="eastmoney_fund_flow",
+        ),
+        fundamentals=FundamentalSnapshot(
+            pe_ttm=96.0,
+            pb=8.5,
+            roe=7.0,
+            revenue_growth=-12.0,
+            profit_growth=-35.0,
+            source="eastmoney_financial",
+        ),
+    )
+
+    assert result.capital_flow is not None
+    assert result.fundamentals is not None
+    assert result.risk_profile is not None
+    assert result.risk_profile.risk_score >= 60
+    assert any(item.name == "capital_flow" and item.signal.value == "negative" for item in result.risk_evidence)
+    assert any(item.name == "fundamental_quality" and item.signal.value == "negative" for item in result.risk_evidence)
+    assert result.verdict.value != "consider"
 
 
 def test_run_analysis_returns_partial_when_provider_fails(monkeypatch):

@@ -101,6 +101,22 @@ class NewsRiskProfile(BaseModel):
     unknowns: list[str] = Field(default_factory=list)
 
 
+class CapitalFlowSnapshot(BaseModel):
+    main_net_inflow: float
+    main_net_inflow_rate: float
+    retail_net_inflow: float | None = None
+    source: str
+
+
+class FundamentalSnapshot(BaseModel):
+    pe_ttm: float | None = None
+    pb: float | None = None
+    roe: float | None = None
+    revenue_growth: float | None = None
+    profit_growth: float | None = None
+    source: str
+
+
 class AnalysisResult(BaseModel):
     status: AnalysisStatus
     stock_code: str
@@ -118,4 +134,6 @@ class AnalysisResult(BaseModel):
     risk_profile: RiskProfile | None = None
     action_plan: ActionPlan | None = None
     news_risk_profile: NewsRiskProfile | None = None
+    capital_flow: CapitalFlowSnapshot | None = None
+    fundamentals: FundamentalSnapshot | None = None
     disclaimer: str

@@ -4,6 +4,7 @@ from shuoha.schemas import (
     AnalysisResult,
     AnalysisStatus,
     BasicContext,
+    CapitalFlowSnapshot,
     Confidence,
     EventRisk,
     EventSeverity,
@@ -11,6 +12,7 @@ from shuoha.schemas import (
     EvidenceSignal,
     NewsRiskProfile,
     RiskProfile,
+    FundamentalSnapshot,
     TrendSnapshot,
     Verdict,
     VerdictBias,
@@ -344,6 +346,45 @@ def test_render_markdown_exposes_structured_event_risks():
     assert "2026-04-05" in markdown
     assert "company_announcement" in markdown
     assert "硬性风险" in markdown
+
+
+def test_render_markdown_exposes_capital_flow_and_fundamentals():
+    result = AnalysisResult(
+        status=AnalysisStatus.OK,
+        stock_code="600519",
+        company_name="贵州茅台",
+        as_of_date="2026-04-06",
+        verdict=Verdict.WAIT,
+        bias=VerdictBias.BEARISH,
+        confidence=Confidence.MEDIUM,
+        technical_evidence=[],
+        risk_evidence=[],
+        unknowns=[],
+        data_warnings=[],
+        basic_context=BasicContext(industry="白酒", company_summary="主营高端白酒。"),
+        capital_flow=CapitalFlowSnapshot(
+            main_net_inflow=-120000000.0,
+            main_net_inflow_rate=-8.5,
+            retail_net_inflow=90000000.0,
+            source="eastmoney_fund_flow",
+        ),
+        fundamentals=FundamentalSnapshot(
+            pe_ttm=96.0,
+            pb=8.5,
+            roe=7.0,
+            revenue_growth=-12.0,
+            profit_growth=-35.0,
+            source="eastmoney_financial",
+        ),
+        disclaimer="本报告仅供学习交流，不构成投资建议。",
+    )
+
+    markdown = render_markdown(result)
+
+    assert "## 资金与基本面" in markdown
+    assert "主力净流入率：`-8.50%`" in markdown
+    assert "PE(TTM)：`96.00`" in markdown
+    assert "利润增速：`-35.00%`" in markdown
 
 
 def test_render_markdown_adds_counterexample_section():
