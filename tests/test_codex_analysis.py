@@ -1,4 +1,10 @@
-from shuoha.codex_analysis import CodexStockContext, build_codex_prompt, run_codex_analysis
+from shuoha.codex_analysis import (
+    CodexStockContext,
+    build_codex_prompt,
+    parse_codex_dashboard,
+    render_codex_dashboard_markdown,
+    run_codex_analysis,
+)
 from shuoha.data.providers.base import ProviderPayload
 from shuoha.schemas import (
     ActionPlan,
@@ -132,6 +138,8 @@ def test_build_codex_prompt_requires_actionable_risk_first_dashboard_contract():
     assert "YYYY-MM-DD" in prompt
     assert "超出时间窗口" in prompt
     assert "技术面一致性" in prompt
+    assert "JSON 决策对象" in prompt
+    assert "codex_schema_version" in prompt
 
 
 def test_build_codex_prompt_includes_structured_snapshots_and_action_plan():
@@ -160,6 +168,97 @@ def test_build_codex_prompt_includes_capital_flow_and_fundamentals():
     assert "结构化基本面" in prompt
     assert "pe_ttm=96.00" in prompt
     assert "profit_growth=-35.00%" in prompt
+
+
+def test_parse_codex_dashboard_accepts_fenced_json_and_renders_markdown():
+    raw = """```json
+{
+  "codex_schema_version": 1,
+  "generated_time": "14:30",
+  "summary": "共分析1只股票 | 🟢买入:0 🟡观望:1 🔴卖出:0",
+  "decisions": [
+    {
+      "stock_code": "000657",
+      "company_name": "中钨高新",
+      "conclusion": "观望",
+      "score": 62,
+      "direction": "neutral",
+      "one_sentence": "事件风险未确认前先等。",
+      "no_position": "空仓者等待公告风险澄清。",
+      "has_position": "持仓者盯住止损线。",
+      "trigger_condition": "放量突破 10.50。",
+      "stop_loss": "跌破 9.30。",
+      "watch_points": ["公告风险", "资金流"],
+      "risk_alerts": ["2026-05-16 大额解禁"],
+      "good_news": ["未查到可靠来源"],
+      "latest_updates": ["2026-05-17 未查到可靠来源"]
+    }
+  ]
+}
+```"""
+
+    dashboard = parse_codex_dashboard(raw)
+    markdown = render_codex_dashboard_markdown(dashboard)
+
+    assert dashboard.decisions[0].stock_code == "000657"
+    assert "# 决策仪表盘" in markdown
+    assert "共分析1只股票" in markdown
+    assert "空仓者等待公告风险澄清" in markdown
+    assert "2026-05-16 大额解禁" in markdown
+
+
+def test_run_codex_analysis_renders_valid_json_response(monkeypatch):
+    payload = ProviderPayload(
+        stock_code="000657",
+        company_name="中钨高新",
+        industry="有色金属",
+        company_summary="主营硬质合金。",
+        daily_history=[
+            {"date": f"2026-04-{day:02d}", "close": float(10 + day / 10), "volume": float(1000 + day)}
+            for day in range(1, 31)
+        ]
+        + [
+            {"date": f"2026-05-{day:02d}", "close": float(13 + day / 10), "volume": float(1300 + day)}
+            for day in range(1, 31)
+        ],
+        as_of_date="2026-05-17",
+    )
+
+    monkeypatch.setattr("shuoha.codex_analysis.AKShareProvider.fetch", lambda self, stock_code: payload)
+    monkeypatch.setattr(
+        "shuoha.codex_analysis.run_codex_exec",
+        lambda prompt, cwd=None, progress=None: """
+{
+  "codex_schema_version": 1,
+  "generated_time": "14:30",
+  "summary": "共分析1只股票 | 🟢买入:0 🟡观望:1 🔴卖出:0",
+  "decisions": [
+    {
+      "stock_code": "000657",
+      "company_name": "中钨高新",
+      "conclusion": "观望",
+      "score": 62,
+      "direction": "neutral",
+      "one_sentence": "先等。",
+      "no_position": "空仓者等待确认。",
+      "has_position": "持仓者控制仓位。",
+      "trigger_condition": "放量突破。",
+      "stop_loss": "跌破支撑。",
+      "watch_points": ["资金流"],
+      "risk_alerts": ["未查到可靠来源"],
+      "good_news": ["未查到可靠来源"],
+      "latest_updates": ["2026-05-17 未查到可靠来源"]
+    }
+  ]
+}
+""",
+    )
+
+    markdown = run_codex_analysis(["000657"])
+
+    assert "# 决策仪表盘" in markdown
+    assert "空仓者等待确认" in markdown
+    assert "```json" not in markdown
 
 
 def test_build_codex_prompt_includes_partial_context_warning():

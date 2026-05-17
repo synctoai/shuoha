@@ -1,6 +1,9 @@
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from pydantic import BaseModel, Field
 
 from shuoha.data.providers.akshare_provider import AKShareProvider
 from shuoha.engine import summarize_signals
@@ -15,6 +18,92 @@ class CodexStockContext:
     stock_code: str
     result: AnalysisResult | None = None
     data_warnings: list[str] = field(default_factory=list)
+
+
+class CodexDecision(BaseModel):
+    stock_code: str
+    company_name: str
+    conclusion: str
+    score: int
+    direction: str
+    one_sentence: str
+    no_position: str
+    has_position: str
+    trigger_condition: str
+    stop_loss: str
+    watch_points: list[str] = Field(default_factory=list)
+    risk_alerts: list[str] = Field(default_factory=list)
+    good_news: list[str] = Field(default_factory=list)
+    latest_updates: list[str] = Field(default_factory=list)
+
+
+class CodexDashboard(BaseModel):
+    codex_schema_version: int
+    generated_time: str
+    summary: str
+    decisions: list[CodexDecision]
+
+
+def _extract_json_object(raw: str) -> str:
+    stripped = raw.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        stripped = "\n".join(lines).strip()
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start == -1 or end == -1 or end < start:
+        raise ValueError("Codex 输出中没有找到 JSON 对象")
+    return stripped[start : end + 1]
+
+
+def parse_codex_dashboard(raw: str) -> CodexDashboard:
+    return CodexDashboard.model_validate(json.loads(_extract_json_object(raw)))
+
+
+def _markdown_list(items: list[str]) -> str:
+    return "\n".join(f"- {item}" for item in items) if items else "- 未查到可靠来源"
+
+
+def render_codex_dashboard_markdown(dashboard: CodexDashboard) -> str:
+    sections = [
+        "# 决策仪表盘",
+        "",
+        dashboard.summary,
+        "",
+    ]
+    for decision in dashboard.decisions:
+        sections.extend(
+            [
+                f"## {decision.company_name}（`{decision.stock_code}`）",
+                f"- 一句话核心结论：{decision.one_sentence}",
+                f"- 结论：`{decision.conclusion}`",
+                f"- 评分：`{decision.score}/100`",
+                f"- 方向：`{decision.direction}`",
+                f"- 空仓者建议：{decision.no_position}",
+                f"- 持仓者建议：{decision.has_position}",
+                f"- 触发条件：{decision.trigger_condition}",
+                f"- 止损位：{decision.stop_loss}",
+                "",
+                "### 风险警报",
+                _markdown_list(decision.risk_alerts),
+                "",
+                "### 利好催化",
+                _markdown_list(decision.good_news),
+                "",
+                "### 最新动态",
+                _markdown_list(decision.latest_updates),
+                "",
+                "### 观察点",
+                _markdown_list(decision.watch_points),
+                "",
+            ]
+        )
+    sections.append(f"生成时间: {dashboard.generated_time}")
+    return "\n".join(sections)
 
 
 def _format_result(result: AnalysisResult) -> str:
@@ -173,6 +262,13 @@ def build_codex_prompt(contexts: list[CodexStockContext]) -> str:
 - 无法确认的信息必须写“未查到可靠来源”。
 - 最后写“生成时间: HH:MM”。
 
+JSON 决策对象要求：
+- 请优先只输出一个 JSON 对象，不要额外包解释文字。
+- JSON 必须包含 `codex_schema_version`，当前固定为 1。
+- 顶层字段必须为：`codex_schema_version`, `generated_time`, `summary`, `decisions`。
+- `decisions` 每项必须包含：`stock_code`, `company_name`, `conclusion`, `score`, `direction`, `one_sentence`, `no_position`, `has_position`, `trigger_condition`, `stop_loss`, `watch_points`, `risk_alerts`, `good_news`, `latest_updates`。
+- `risk_alerts`、`good_news`、`latest_updates` 中的事实必须带 YYYY-MM-DD 日期；查不到就写“未查到可靠来源”。
+
 决策仪表盘结构要求：
 - 每只股票必须先给“一句话核心结论”，直接说明该买、该等、还是该回避。
 - 每只股票必须分别给出“空仓者建议”和“持仓者建议”，不能用同一句话糊弄两类人。
@@ -239,4 +335,8 @@ def run_codex_analysis(
             _notify(progress, f"{stock_code} 本地数据准备失败，仍会交给 Codex 继续研究：{exc}")
     prompt = build_codex_prompt(contexts)
     _notify(progress, "正在调用 Codex CLI 进行新闻、公告、资金流和舆情研究...")
-    return run_codex_exec(prompt, cwd=cwd or Path.cwd(), progress=progress)
+    raw_output = run_codex_exec(prompt, cwd=cwd or Path.cwd(), progress=progress)
+    try:
+        return render_codex_dashboard_markdown(parse_codex_dashboard(raw_output))
+    except Exception:
+        return raw_output
