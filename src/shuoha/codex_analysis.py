@@ -106,6 +106,28 @@ def render_codex_dashboard_markdown(dashboard: CodexDashboard) -> str:
     return "\n".join(sections)
 
 
+def _looks_like_markdown(raw: str) -> bool:
+    stripped = raw.lstrip()
+    return stripped.startswith("#") or "\n## " in stripped or "决策仪表盘" in stripped
+
+
+def _render_codex_fallback_markdown(raw_output: str, error: Exception) -> str:
+    return "\n".join(
+        [
+            "# 决策仪表盘",
+            "",
+            "## 数据状态",
+            f"- Codex 返回内容结构化校验失败，已生成 Markdown 降级报告：{error}",
+            "- 请优先参考本地报告中的结构化趋势、风险、行动计划；外部研究内容放在下方附录。",
+            "",
+            "## Codex 原始输出附录",
+            "```text",
+            raw_output.strip(),
+            "```",
+        ]
+    )
+
+
 def _format_result(result: AnalysisResult) -> str:
     evidence = result.technical_evidence + result.risk_evidence
     evidence_lines = [
@@ -252,10 +274,9 @@ def build_codex_prompt(contexts: list[CodexStockContext]) -> str:
 请基于下面由 shuoha 复用 AKShare 和本地指标层准备的上下文，继续研究这些 A 股股票的今日或最近交易日新闻、公告、资金流、舆情、行业催化和风险。
 
 硬性要求：
-- 用中文 Markdown 输出。
-- 输出标题必须包含“决策仪表盘”。
-- 包含“共分析N只股票 | 🟢买入:x 🟡观望:y 🔴卖出:z”格式的总览。
-- 每只股票必须包含“重要信息速览”“风险警报”“利好催化”“最新动态”。
+- 你返回的内容是 shuoha 用来生成 Markdown 报告的中间结果；最终产物必须由 shuoha 渲染为 Markdown 文档。
+- 包含“共分析N只股票 | 🟢买入:x 🟡观望:y 🔴卖出:z”格式的总览字段。
+- 每只股票必须覆盖“重要信息速览”“风险警报”“利好催化”“最新动态”对应的信息。
 - 每只股票给出结论、0-100 评分和方向判断。
 - 可以参考本地确定性结论，但最终结论允许结合新闻和基本面信息重新判断。
 - 不要编造新闻、公告、资金数据、业绩数据或来源。
@@ -263,7 +284,7 @@ def build_codex_prompt(contexts: list[CodexStockContext]) -> str:
 - 最后写“生成时间: HH:MM”。
 
 JSON 决策对象要求：
-- 请优先只输出一个 JSON 对象，不要额外包解释文字。
+- 请只输出一个 JSON 对象，不要额外包解释文字。JSON 只是中间格式，不是最终报告格式。
 - JSON 必须包含 `codex_schema_version`，当前固定为 1。
 - 顶层字段必须为：`codex_schema_version`, `generated_time`, `summary`, `decisions`。
 - `decisions` 每项必须包含：`stock_code`, `company_name`, `conclusion`, `score`, `direction`, `one_sentence`, `no_position`, `has_position`, `trigger_condition`, `stop_loss`, `watch_points`, `risk_alerts`, `good_news`, `latest_updates`。
@@ -338,5 +359,7 @@ def run_codex_analysis(
     raw_output = run_codex_exec(prompt, cwd=cwd or Path.cwd(), progress=progress)
     try:
         return render_codex_dashboard_markdown(parse_codex_dashboard(raw_output))
-    except Exception:
-        return raw_output
+    except Exception as exc:
+        if _looks_like_markdown(raw_output):
+            return raw_output
+        return _render_codex_fallback_markdown(raw_output, exc)

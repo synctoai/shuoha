@@ -261,6 +261,36 @@ def test_run_codex_analysis_renders_valid_json_response(monkeypatch):
     assert "```json" not in markdown
 
 
+def test_run_codex_analysis_never_returns_raw_json_when_schema_validation_fails(monkeypatch):
+    payload = ProviderPayload(
+        stock_code="000657",
+        company_name="中钨高新",
+        industry="有色金属",
+        company_summary="主营硬质合金。",
+        daily_history=[
+            {"date": f"2026-04-{day:02d}", "close": float(10 + day / 10), "volume": float(1000 + day)}
+            for day in range(1, 31)
+        ]
+        + [
+            {"date": f"2026-05-{day:02d}", "close": float(13 + day / 10), "volume": float(1300 + day)}
+            for day in range(1, 31)
+        ],
+        as_of_date="2026-05-17",
+    )
+
+    monkeypatch.setattr("shuoha.codex_analysis.AKShareProvider.fetch", lambda self, stock_code: payload)
+    monkeypatch.setattr(
+        "shuoha.codex_analysis.run_codex_exec",
+        lambda prompt, cwd=None, progress=None: '{"unexpected": "json"}',
+    )
+
+    markdown = run_codex_analysis(["000657"])
+
+    assert markdown.startswith("# 决策仪表盘")
+    assert "结构化校验失败" in markdown
+    assert not markdown.lstrip().startswith("{")
+
+
 def test_build_codex_prompt_includes_partial_context_warning():
     prompt = build_codex_prompt(
         [
