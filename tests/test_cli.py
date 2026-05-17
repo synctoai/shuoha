@@ -70,7 +70,7 @@ def test_codex_cli_accepts_multiple_stock_codes(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         "shuoha.cli.run_codex_analysis",
-        lambda stock_codes: "🎯 2026-05-17 决策仪表盘\n共分析2只股票",
+        lambda stock_codes, progress=None: "🎯 2026-05-17 决策仪表盘\n共分析2只股票",
     )
     monkeypatch.setattr("shuoha.cli.write_markdown_report", fake_write_markdown_report)
 
@@ -84,10 +84,29 @@ def test_codex_cli_accepts_multiple_stock_codes(monkeypatch, tmp_path):
     assert "codex" in written["output_dir"].parts
 
 
+def test_codex_cli_prints_progress_to_stderr(monkeypatch, tmp_path):
+    def fake_run_codex_analysis(stock_codes, progress=None):
+        if progress:
+            progress("正在准备 002050 的本地行情和指标上下文...")
+            progress("正在调用 Codex CLI 进行新闻、公告、资金流和舆情研究...")
+        return "# codex report"
+
+    monkeypatch.setattr("shuoha.cli.run_codex_analysis", fake_run_codex_analysis)
+    monkeypatch.setattr("shuoha.cli.write_markdown_report", lambda report_markdown, output_dir: tmp_path / "report.md")
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["analyze", "002050", "--cli", "codex"])
+
+    assert result.exit_code == 0
+    assert "# codex report" in result.stdout
+    assert "正在准备 002050" in result.stderr
+    assert "正在调用 Codex CLI" in result.stderr
+
+
 def test_codex_cli_prints_external_cli_errors(monkeypatch):
     monkeypatch.setattr(
         "shuoha.cli.run_codex_analysis",
-        lambda stock_codes: (_ for _ in ()).throw(ExternalCliError("未找到 codex 命令")),
+        lambda stock_codes, progress=None: (_ for _ in ()).throw(ExternalCliError("未找到 codex 命令")),
     )
 
     runner = CliRunner()

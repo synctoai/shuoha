@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -5,6 +6,8 @@ from shuoha.data.providers.akshare_provider import AKShareProvider
 from shuoha.engine import summarize_signals
 from shuoha.external_cli import run_codex_exec
 from shuoha.schemas import AnalysisResult, BasicContext
+
+ProgressReporter = Callable[[str], None]
 
 
 @dataclass
@@ -78,15 +81,27 @@ def build_codex_prompt(contexts: list[CodexStockContext]) -> str:
 """
 
 
-def run_codex_analysis(stock_codes: list[str], *, cwd: Path | None = None) -> str:
+def _notify(progress: ProgressReporter | None, message: str) -> None:
+    if progress is not None:
+        progress(message)
+
+
+def run_codex_analysis(
+    stock_codes: list[str],
+    *,
+    cwd: Path | None = None,
+    progress: ProgressReporter | None = None,
+) -> str:
     provider = AKShareProvider()
     contexts: list[CodexStockContext] = []
     for stock_code in stock_codes:
+        _notify(progress, f"正在准备 {stock_code} 的本地行情和指标上下文...")
         try:
             payload = provider.fetch(stock_code)
             result = summarize_signals(payload.stock_code, payload.company_name, payload.daily_history)
             result.basic_context = BasicContext(industry=payload.industry, company_summary=payload.company_summary)
             contexts.append(CodexStockContext(stock_code=stock_code, result=result))
+            _notify(progress, f"已准备 {payload.stock_code}：本地数据日期 {result.as_of_date}")
         except Exception as exc:
             contexts.append(
                 CodexStockContext(
@@ -95,5 +110,7 @@ def run_codex_analysis(stock_codes: list[str], *, cwd: Path | None = None) -> st
                     data_warnings=[f"本地 AKShare 数据拉取失败：{exc}"],
                 )
             )
+            _notify(progress, f"{stock_code} 本地数据准备失败，仍会交给 Codex 继续研究：{exc}")
     prompt = build_codex_prompt(contexts)
-    return run_codex_exec(prompt, cwd=cwd or Path.cwd())
+    _notify(progress, "正在调用 Codex CLI 进行新闻、公告、资金流和舆情研究...")
+    return run_codex_exec(prompt, cwd=cwd or Path.cwd(), progress=progress)

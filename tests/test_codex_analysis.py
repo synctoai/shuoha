@@ -88,7 +88,7 @@ def test_run_codex_analysis_continues_when_one_stock_fetch_fails(monkeypatch):
             raise RuntimeError("network down")
         return payload
 
-    def fake_run_codex_exec(prompt, cwd):
+    def fake_run_codex_exec(prompt, cwd, progress=None):
         captured["prompt"] = prompt
         return "# codex report"
 
@@ -102,3 +102,38 @@ def test_run_codex_analysis_continues_when_one_stock_fetch_fails(monkeypatch):
     assert "000657" in captured["prompt"]
     assert "600105" in captured["prompt"]
     assert "network down" in captured["prompt"]
+
+
+def test_run_codex_analysis_reports_progress(monkeypatch):
+    payload = ProviderPayload(
+        stock_code="002050",
+        company_name="三花智控",
+        industry="家电零部件",
+        company_summary="主营制冷控制元器件。",
+        daily_history=[
+            {"date": f"2026-04-{day:02d}", "close": float(20 + day / 10), "volume": float(1000 + day)}
+            for day in range(1, 31)
+        ]
+        + [
+            {"date": f"2026-05-{day:02d}", "close": float(23 + day / 10), "volume": float(1300 + day)}
+            for day in range(1, 31)
+        ],
+        as_of_date="2026-05-17",
+    )
+    events = []
+
+    def fake_run_codex_exec(prompt, cwd, progress=None):
+        if progress:
+            progress("Codex 仍在分析中，已等待 30 秒...")
+        return "# codex report"
+
+    monkeypatch.setattr("shuoha.codex_analysis.AKShareProvider.fetch", lambda self, stock_code: payload)
+    monkeypatch.setattr("shuoha.codex_analysis.run_codex_exec", fake_run_codex_exec)
+
+    report = run_codex_analysis(["002050"], progress=events.append)
+
+    assert report == "# codex report"
+    assert any("正在准备 002050" in event for event in events)
+    assert any("已准备 002050" in event for event in events)
+    assert any("正在调用 Codex CLI" in event for event in events)
+    assert any("已等待 30 秒" in event for event in events)

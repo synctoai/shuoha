@@ -77,7 +77,7 @@ def analyze(
             raise typer.Exit(2)
     if cli_backend == CliBackend.CODEX:
         try:
-            markdown = run_codex_analysis(stock_codes)
+            markdown = run_codex_analysis(stock_codes, progress=lambda message: typer.echo(message, err=True))
         except ExternalCliError as exc:
             typer.echo(str(exc))
             raise typer.Exit(2) from exc

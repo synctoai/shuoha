@@ -1,3 +1,5 @@
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
 import shutil
 import subprocess
@@ -8,7 +10,21 @@ class ExternalCliError(RuntimeError):
     pass
 
 
-def run_codex_exec(prompt: str, *, cwd: Path) -> str:
+ProgressReporter = Callable[[str], None]
+
+
+def _notify(progress: ProgressReporter | None, message: str) -> None:
+    if progress is not None:
+        progress(message)
+
+
+def run_codex_exec(
+    prompt: str,
+    *,
+    cwd: Path,
+    progress: ProgressReporter | None = None,
+    heartbeat_seconds: int = 30,
+) -> str:
     if shutil.which("codex") is None:
         raise ExternalCliError("未找到 codex 命令，请先安装并登录 Codex CLI。")
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -23,16 +39,28 @@ def run_codex_exec(prompt: str, *, cwd: Path) -> str:
             str(output_path),
             "-",
         ]
-        completed = subprocess.run(
+        process = subprocess.Popen(
             args,
-            input=prompt,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            capture_output=True,
             cwd=cwd,
-            check=False,
         )
-        if completed.returncode != 0:
-            detail = completed.stderr.strip() or completed.stdout.strip() or f"exit code {completed.returncode}"
+
+        waited_seconds = 0
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(process.communicate, prompt)
+            while True:
+                try:
+                    stdout, stderr = future.result(timeout=heartbeat_seconds)
+                    break
+                except TimeoutError:
+                    waited_seconds += heartbeat_seconds
+                    _notify(progress, f"Codex 仍在分析中，已等待 {waited_seconds} 秒...")
+
+        if process.returncode != 0:
+            detail = stderr.strip() or stdout.strip() or f"exit code {process.returncode}"
             raise ExternalCliError(f"codex 执行失败：{detail}")
         if not output_path.exists():
             raise ExternalCliError("codex 没有生成报告。")
