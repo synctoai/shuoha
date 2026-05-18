@@ -37,10 +37,16 @@ class CodexDecision(BaseModel):
     latest_updates: list[str] = Field(default_factory=list)
 
 
+class CodexSummary(BaseModel):
+    overview: str
+    market_tone: str | None = None
+    footer: str | None = None
+
+
 class CodexDashboard(BaseModel):
     codex_schema_version: int
     generated_time: str
-    summary: str
+    summary: str | CodexSummary
     decisions: list[CodexDecision]
 
 
@@ -68,11 +74,20 @@ def _markdown_list(items: list[str]) -> str:
     return "\n".join(f"- {item}" for item in items) if items else "- 未查到可靠来源"
 
 
+def _render_dashboard_summary(summary: str | CodexSummary) -> str:
+    if isinstance(summary, str):
+        return summary
+    lines = [summary.overview]
+    if summary.market_tone:
+        lines.append(f"\n> {summary.market_tone}")
+    return "\n".join(lines)
+
+
 def render_codex_dashboard_markdown(dashboard: CodexDashboard) -> str:
     sections = [
         "# 决策仪表盘",
         "",
-        dashboard.summary,
+        _render_dashboard_summary(dashboard.summary),
         "",
     ]
     for decision in dashboard.decisions:

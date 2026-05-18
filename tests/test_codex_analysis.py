@@ -207,6 +207,45 @@ def test_parse_codex_dashboard_accepts_fenced_json_and_renders_markdown():
     assert "2026-05-16 大额解禁" in markdown
 
 
+def test_parse_codex_dashboard_accepts_structured_summary_object():
+    raw = """
+{
+  "codex_schema_version": 1,
+  "generated_time": "21:53",
+  "summary": {
+    "overview": "共分析1只股票 | 🟢买入:0 🟡观望:1 🔴卖出:0",
+    "market_tone": "AI PCB钻针与钨资源景气提供基本面催化，但技术结构不支持追买。",
+    "footer": "生成时间: 21:53"
+  },
+  "decisions": [
+    {
+      "stock_code": "000657",
+      "company_name": "中钨高新",
+      "conclusion": "观望",
+      "score": 46,
+      "direction": "🟡观望",
+      "one_sentence": "该等不该追。",
+      "no_position": "空仓者建议继续等待。",
+      "has_position": "持仓者建议控制回撤。",
+      "trigger_condition": "重新站回MA20。",
+      "stop_loss": "跌破MA60。",
+      "watch_points": ["2026-05-18 技术买点不成立"],
+      "risk_alerts": ["2026-05-18 主力资金净流出"],
+      "good_news": ["2026-04-27 一季报高增"],
+      "latest_updates": ["2026-05-18 当前价56.96"]
+    }
+  ]
+}
+"""
+
+    dashboard = parse_codex_dashboard(raw)
+    markdown = render_codex_dashboard_markdown(dashboard)
+
+    assert "共分析1只股票" in markdown
+    assert "AI PCB钻针" in markdown
+    assert "结构化校验失败" not in markdown
+
+
 def test_run_codex_analysis_renders_valid_json_response(monkeypatch):
     payload = ProviderPayload(
         stock_code="000657",
